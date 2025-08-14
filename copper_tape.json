@@ -8,7 +8,7 @@
         "Email": "fblaszcz@fnal.gov"
     },
     "Data": {
-        "Path": "/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE",
+        "Path": "test_data",
         "Name": "copper_tape"
     },
     "Date of Receipt": "05/17/2025",
