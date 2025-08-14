@@ -73,8 +73,6 @@ class Dataset():
             raise ValueError("Path must point to an Excel file with .xlsx extension.")
         if not self.path:
             raise ValueError("Path cannot be empty.")
-        if not self.path.startswith("/"):
-            raise ValueError("Path must be an absolute path starting with '/'.")
         if "baseline" in self.path:
             self.name = "Baseline"
         elif "ullage" in self.path:
