@@ -1,0 +1,27 @@
+from dataClasses import Dataset
+from analysisClasses import Analysis
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 6))
+# fig2, ax2 = plt.subplots(figsize=(10, 6))
+# dataset = Dataset(path="/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE/copper_tape_liquid.xlsx")
+# print(dataset.name)
+# dataset.load()
+# dataset.assign_datetime()
+# print(dataset.datetime_mapping)
+# dataset.findTimes(manual=True)
+# dataset.purity(show=True, ax=ax, color="blue")
+# dataset.show()
+analysis = Analysis(path="/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE", name="COPPER_TAPE")
+analysis.level(ax=ax, manual=False)
+# analysis.purity(show=True, ax=ax, manual=False)
+# analysis.h2oConcentration(show=True, ax=ax2, manual=False)
+# fig, ax = plt.subplots(figsize=(10, 6))
+# ax2 = ax.twinx()
+# analysis = Analysis(path="/Users/jcapo/cernbox/NLTFdata/MTS_NASA_BareAl", name="ABS")
+# # analysis.h2oConcentration(show=True, ax=ax)
+# # analysis.temperature(show=True, ax=ax2)
+# analysis.temperature(show=True, ax=ax)
+fig.tight_layout()
+# fig2.tight_layout()
+plt.show()

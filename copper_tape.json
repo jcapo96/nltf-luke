@@ -1,0 +1,39 @@
+{
+    "Author": {
+        "Name": "Jordi Capó",
+        "Email": "jordi.capo@ific.uv.es"
+    },
+    "Tester": {
+        "Name": "Flor de Maria Blaszczyk",
+        "Email": "fblaszcz@fnal.gov"
+    },
+    "Data": {
+        "Path": "/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE",
+        "Name": "copper_tape"
+    },
+    "Date of Receipt": "05/17/2025",
+    "Sample": {
+        "Sample Name": "Copper Foil Tape",
+        "Composition": "3M 1181 Copper Foil tape with conductive adhesive",
+        "Picture Location": "https://drive.google.com/drive/folders/1NWR9tC9DTZSDlbT2mzevMrnqrA-BBfu_?usp=sharing",
+        "Dimensions": "11 equal stripes of 20 cm by 3 cm each: 660 cm²",
+        "Source": "Philippe Rosier (IJCLab)",
+        "Preparation": "Sectioned into 11 uniform pieces (20 by 3 cm), folded and glued onto themselves onto a stainless steel wire to form single strips (10 by 3 cm), and cleaned with 200-proof ethanol."
+    },
+    "Results": {
+        "Summary": "No significant water outgassing observed. The analysis on the electron lifetime shows the addition of the sample didn't have an impact on it. The observed decay overtime is due to the recirculating filter being off and the expected outgassing from the cryostat components themselves. Simple visual inspection before and after the test showed there was no evidence of physical damage such as tears, deformation, or discoloration."
+    },
+    "Images": {
+        "Before": "/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE/IMAGES/copper_tape_before_A.jpeg",
+        "After": "/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE/IMAGES/copper_tape_after_A.jpeg"
+    },
+    "Parameters": {
+        "H2O": {
+            "manual": false,
+            "integration_time_ini": 1,
+            "integration_time_end": 8,
+            "offset_ini": 1,
+            "offset_end": 0
+        }
+    }
+}

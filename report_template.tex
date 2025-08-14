@@ -1,0 +1,160 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{bookmark}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{cleveref}
+\usepackage{makecell}
+\usepackage{lipsum} % For placeholder text
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{sectsty}
+\sectionfont{\large}
+\subsectionfont{\normalsize}
+\fancypagestyle{firstpage}{
+    \fancyhf{}
+    \fancyhead[L]{
+        \includegraphics[height=0.75cm]{fermilab_logo.png}
+    }
+    \fancyhead[C]{}
+    \fancyhead[R]{
+        Author: {{ author.name }} (\href{mailto:{{ author.email }}}{{ author.email }})\\
+        Approved by: {{ tester.name }} (\href{mailto:{{ tester.email }}}{{ tester.email }})
+    }
+}
+\thispagestyle{firstpage}
+
+\begin{document}
+
+\begin{center}
+    \LARGE \textbf{ {{ sample.name }} } \\
+    \large Date of Receipt: {{ date }}
+\end{center}
+
+\begin{center}
+    \large Material Tests Stand: \textbf{Luke} - \textit{Noble Liquid Test Facility (NLTF), FNAL} \\
+    \small Contamination, outgassing and cryogenic compatibility studies for Argon detectors.
+\end{center}
+
+% \vspace{1cm}
+
+\begin{table}[H]
+    \centering
+    \caption*{\textbf{Sample Information}}
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{|l|p{0.75\textwidth}|}
+        \hline
+        \textbf{Name} & {{ sample.name }} \\ \hline
+        \textbf{Composition} & {{ sample.composition }} \\ \hline
+        \textbf{Pictures} & \hyperref[sec:pictures]{Sample Pictures~\ref{sec:pictures}} \\ \hline
+        \textbf{Dimensions} & {{ sample.dimensions }} \\ \hline
+        \textbf{Source} & {{ sample.source }} \\ \hline
+        \textbf{Preparation} & {{ sample.preparation }} \\ \hline
+    \end{tabular}
+    }
+\end{table}
+
+Three consecutive runs were performed: baseline (no sample), ullage (sample in gas phase), and liquid (sample submerged in liquid argon). Each run began when the filter was deactivated after reaching a plateau in electron lifetime and H\textsubscript{2}O concentration. Runs last typically 24hrs, making sure a plateau in the water outgassing is observed. Details are summarized in Table~\ref{tab:measurement_summary}.
+
+\begin{table}[H]
+    \centering
+    \caption*{\textbf{Measurement Summary}}
+    \renewcommand\arraystretch{1.5} % Increase row height
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{|l|c|c|c|c|c|c|}
+        \hline
+        \makecell{\rule{0pt}{2.5ex}\textbf{Run}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Start Date}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{End Date}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Initial H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Final H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{$\Delta$ H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Temp.} \\ \textbf{[K]}} \\
+        \hline
+        Baseline & {{ baseline.start_date }} & {{ baseline.end_date }} & {{ baseline.initial_concentration }} $\pm$ {{ baseline.initial_concentration_err }} & {{ baseline.final_concentration }} $\pm$ {{ baseline.final_concentration_err }} & {{ baseline.concentration }} $\pm$ {{ baseline.concentration_err }} & -- \\
+        \hline
+        Ullage & {{ ullage.start_date }} & {{ ullage.end_date }} & {{ ullage.initial_concentration }} $\pm$ {{ ullage.initial_concentration_err }} & {{ ullage.final_concentration }} $\pm$ {{ ullage.final_concentration_err }} & {{ ullage.concentration }} $\pm$ {{ ullage.concentration_err }} & {{ ullage.temperature }} $\pm$ {{ ullage.temperature_err }}\\
+        \hline
+        Liquid & {{ liquid.start_date }} & {{ liquid.end_date }} & {{ liquid.initial_concentration }} $\pm$ {{ liquid.initial_concentration_err }} & {{ liquid.final_concentration }} $\pm$ {{ liquid.final_concentration_err }} & {{ liquid.concentration }} $\pm$ {{ liquid.concentration_err }} & {{ liquid.temperature }} $\pm$ {{ liquid.temperature_err }}\\
+        \hline
+    \end{tabular}
+    }
+    \renewcommand\arraystretch{1} % Reset row height
+    \vspace{0.3cm}
+    \centering
+    \caption{Summary of measurement results for each run. Systematic uncertainties are not included.}
+    \vspace{0.1cm}
+    \label{tab:measurement_summary}
+\end{table}
+
+\vspace{-1cm}
+
+\section*{Conclusions on the Analysis}
+{{ results.summary }}
+
+\section*{Summary of Plots}
+
+All plots show the data taken after the filter is turned off. The initial water concentration is averaged over {{ parameters.h2o_parameters.integration_time_ini }} minutes before the filter is turned off; the final water concentration is averaged over {{ parameters.h2o_parameters.integration_time_end }} hours once the plateau is reached.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ {{ results.purity_img }} }
+    \centering
+    \caption{Electron lifetime decay over time for the baseline, ullage and liquid tests respectively. Filter is turned-off at $t=0 s$.}
+    \label{fig:purity}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ {{ results.h2o_img }} }
+    \centering
+    \caption{H\textsubscript{2}O Concentration evolution for the baseline, ullage and liquid runs. Filter is turned-off at $t=0 s$.}
+    \label{fig:h2o}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ {{ results.temperature_img }} }
+    \centering
+    \caption{Temperature evolution for the ullage and liquid runs, once the filter is turned off. The temperature is measured on the platform holding the sample.}
+    \label{fig:temperature}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ {{ results.level_img }} }
+    \centering
+    \caption{Liquid argon level in the cryostat for each run. Filter is turned-off at $t=0 s$. The level drops over time because some gas is lost to measure the water level to the gas analyzer.}
+    \label{fig:level}
+\end{figure}
+
+\section*{Sample Pictures}
+\label{sec:pictures}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.4\textheight,keepaspectratio]{ {{ images.before }} }
+        \centering
+        \caption{Sample before tests.}
+        \label{fig:sample_before}
+    \end{minipage}
+
+    \vspace{0.02\textheight}
+
+    \begin{minipage}{\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.4\textheight,keepaspectratio]{ {{ images.after }} }
+        \centering
+        \caption{Sample after tests.}
+        \label{fig:sample_after}
+    \end{minipage}
+\end{figure}
+
+\end{document}

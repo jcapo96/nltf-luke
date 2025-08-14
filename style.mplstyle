@@ -1,0 +1,54 @@
+# === Figure Settings ===
+figure.figsize: 6.5, 4.5  # Standard for publications (fits IEEE/Nature two-column format)
+savefig.bbox: tight  # Remove extra white space when saving
+
+# === Font Settings ===
+font.family: serif
+font.serif: Times New Roman, DejaVu Serif
+font.size: 12  # Consistent font size for publications
+
+# === Title & Label Formatting ===
+axes.titlesize: 16
+axes.titleweight: bold
+axes.titlepad: 10  # Adjust space between title and plot
+axes.labelsize: 14  # Axis label size
+axes.labelpad: 8  # Space between axis labels and plot
+
+# === Tick Formatting ===
+xtick.labelsize: 12
+ytick.labelsize: 12
+xtick.direction: in  # Keep ticks inside the plot for a clean look
+ytick.direction: in
+xtick.major.size: 8
+ytick.major.size: 8
+xtick.minor.size: 4
+ytick.minor.size: 4
+xtick.major.width: 1  # Thin but visible ticks
+ytick.major.width: 1
+xtick.minor.width: 0.8
+ytick.minor.width: 0.8
+xtick.major.pad: 6  # Space between tick labels and plot
+ytick.major.pad: 6
+
+# === Grid Formatting (Subtle for Clarity) ===
+grid.linestyle: --
+grid.linewidth: 0.5
+grid.color: grey
+grid.alpha: 0.5
+
+# === Legend Formatting ===
+legend.fontsize: 12
+legend.frameon: True  # Include a frame for clarity
+legend.loc: best  # Auto-select best position
+legend.edgecolor: black  # Frame color
+
+# === Line & Marker Styling ===
+lines.linewidth: 2
+lines.markersize: 2.5
+lines.markeredgewidth: 1
+
+# === Colormap (Colorblind-Friendly) ===
+image.cmap: viridis  # Better for scientific plots (alternative: 'cividis' or 'tab10')
+
+# === Other Settings ===
+axes.linewidth: 1  # Thin but clear axis lines
