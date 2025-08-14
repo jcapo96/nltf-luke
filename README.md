@@ -48,6 +48,9 @@ python3 src/report_latex.py <file_name>.json
 ```
 
 Replace `<file_name>.json` with your JSON file.
+
+This command will generate a PDF report called `report.pdf` containing the results of the analysis.
+
 ## JSON File Fields Explained
 
 The JSON file used for report generation contains the following fields:
@@ -83,10 +86,10 @@ The JSON file used for report generation contains the following fields:
 - **Parameters**: Measurement or analysis parameters.
     - `H2O`: Parameters related to water measurement.
         - `manual`: Boolean indicating if manual integration is wished to be used.
-        - `integration_time_ini`: Initial integration time.
-        - `integration_time_end`: Final integration time.
-        - `offset_ini`: Initial offset value.
-        - `offset_end`: Final offset value.
+        - `integration_time_ini`: Initial integration time. The amount of time used for the calculation of the "initial" quantities.
+        - `integration_time_end`: Final integration time. The amount of time used for the calculation of the "final" quantities.
+        - `offset_ini`: Initial offset value. The offset time, since the first value, the quantities are calculated.
+        - `offset_end`: Final offset value. The offset time, since the latest value, the quantities are calculated.
 
 Each field provides essential information for generating a comprehensive report.
 
@@ -98,4 +101,4 @@ Each field provides essential information for generating a comprehensive report.
 
 - **Outlier Detection**: Adding methods to detect and flag potential outliers in the data, ensuring that plots and statistical distributions are not biased by anomalous points.
 
-
+- **Reference Materials**: Test results must be compared to reference materials, specifically stainless steel and G10. The report will include data from these reference materials, and key observables will be derived from these comparisons. Conclusions will be extracted based on how the sample's performance relates to the reference materials, providing context and supporting the interpretation of results.
