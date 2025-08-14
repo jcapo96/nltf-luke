@@ -90,4 +90,12 @@ The JSON file used for report generation contains the following fields:
 
 Each field provides essential information for generating a comprehensive report.
 
+## Work in Progress / To-Do
+
+- **Data Format Wrapper**: Developing a wrapper to support importing data from various formats, converting them into the base JSON format required by the software. This will allow users to focus on creating format-specific converters, enhancing flexibility and generalization.
+
+- **Preliminary Report Generation**: Implementing functionality to generate a preliminary report from the imported data. This report will help in extracting conclusions and identifying outliers, which can then be reviewed and incorporated into the final JSON file for comprehensive reporting.
+
+- **Outlier Detection**: Adding methods to detect and flag potential outliers in the data, ensuring that plots and statistical distributions are not biased by anomalous points.
+
 
