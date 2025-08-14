@@ -31,14 +31,6 @@ Or install packages individually:
 pip install <package_name>
 ```
 
-### 4. Deactivate the Environment
-
-When finished, deactivate with:
-
-```bash
-deactivate
-```
-
 ## Usage
 
 To generate a report, ensure you have a JSON file with the required entries (see the example file `copper_tape.json`). Then run:
