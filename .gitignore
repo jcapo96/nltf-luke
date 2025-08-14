@@ -3,3 +3,7 @@
 *.out
 *.pdf
 *.json
+*.ipynb
+ana/
+luke/
+MTS_NASA_BareAl/
