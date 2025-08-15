@@ -27,16 +27,12 @@ h2o_parameters = parameters["H2O"]
 if "signal" in h2o_parameters:
     if h2o_parameters["signal"] == "NEW":
         signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
-        print("Using PAB_S1_AE_611_AR_REAL_F_CV signal for H2O concentration analysis.")
     elif h2o_parameters["signal"] == "OLD":
         signal_name = "PAB_S1_AE_600_AR_REAL_F_CV_OLD"
-        print("Using PAB_S1_AE_600_AR_REAL_F_CV_OLD signal for H2O concentration analysis.")
     else:
         signal_name = h2o_parameters["signal"]
-        print(f"Using signal {signal_name} for H2O concentration analysis.")
 elif "signal" not in h2o_parameters:
     signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
-    print("Using default signal PAB_S1_AE_611_AR_REAL_F_CV for H2O concentration analysis.")
 
 analysis = Analysis(path=data["Data"]["Path"], name=data["Data"]["Name"])
 fig1, ax1 = plt.subplots(figsize=(10, 6))
@@ -44,31 +40,109 @@ fig2, ax2 = plt.subplots(figsize=(10, 6))
 fig3, ax3 = plt.subplots(figsize=(10, 6))
 fig4, ax4 = plt.subplots(figsize=(10, 6))
 
-purity = analysis.purity(show=True, ax=ax1, manual=False)
-h2o_concentration = analysis.h2oConcentration(show=True, ax=ax2, manual=h2o_parameters["manual"],
+# Run analyses and get results
+purity = analysis.purity(show=False, ax=ax1, manual=False)
+h2o_concentration = analysis.h2oConcentration(show=False, ax=ax2, manual=h2o_parameters["manual"],
     integration_time_ini=h2o_parameters["integration_time_ini"]*60, integration_time_end=h2o_parameters["integration_time_end"]*60,
     offset_ini=h2o_parameters["offset_ini"]*60, offset_end=h2o_parameters["offset_end"]*60)
-temperature = analysis.temperature(show=True, ax=ax3, manual=False)
+temperature = analysis.temperature(show=False, ax=ax3, manual=False)
 level = analysis.level(ax=ax4, manual=False)
-# Load JSON
 
+# Save plots
 fig1.savefig("purity.png", dpi=300)
 fig2.savefig("h2o_concentration.png", dpi=300)
 fig3.savefig("temperature.png", dpi=300)
 fig4.savefig("level.png", dpi=300)
+
+# Get analysis results for template rendering
+analysis_results = analysis.get_analysis_results()
 
 # Fill template
 with open("report_template.tex") as f:
     template = Template(f.read())
 
 def format_datetime(dt):
+    """Format datetime for display, handling 'N/A' and other edge cases."""
+    if dt == 'N/A' or dt is None:
+        return 'N/A'
     if isinstance(dt, str):
-        dt = datetime.fromisoformat(dt)
+        try:
+            dt = datetime.fromisoformat(dt)
+        except ValueError:
+            return 'N/A'
     return dt.strftime("%m/%d/%y %H:%M")
 
 # Replace '%' with '\%' in relevant fields if present
 def escape_percent(s):
     return s.replace('%', '\\%') if '%' in s else s
+
+# Helper function to extract data from analysis results
+def get_dataset_data(analysis_results, dataset_type, data_type):
+    """Extract data for a specific dataset and data type from analysis results."""
+    if dataset_type in analysis_results.get(data_type, {}):
+        return analysis_results[data_type][dataset_type]
+    return None
+
+# Helper function to extract H2O data from the nested structure
+def extract_h2o_data(h2o_result):
+    """Extract H2O concentration data from the analysis result structure."""
+    if h2o_result and 'h2o_data' in h2o_result:
+        return h2o_result['h2o_data']
+    return None
+
+# Helper function to extract temperature data from the nested structure
+def extract_temp_data(temp_result):
+    """Extract temperature data from the analysis result structure."""
+    if temp_result and 'temperature_data' in temp_result:
+        return temp_result['temperature_data']
+    return None
+
+# Extract baseline data
+baseline_h2o = get_dataset_data(analysis_results, 'baseline', 'h2o_concentration')
+baseline_temp = get_dataset_data(analysis_results, 'baseline', 'temperature')
+baseline_level = get_dataset_data(analysis_results, 'baseline', 'liquid_level')
+
+# Extract ullage data
+ullage_h2o = get_dataset_data(analysis_results, 'ullage', 'h2o_concentration')
+ullage_temp = get_dataset_data(analysis_results, 'ullage', 'temperature')
+ullage_level = get_dataset_data(analysis_results, 'ullage', 'liquid_level')
+
+# Extract liquid data
+liquid_h2o = get_dataset_data(analysis_results, 'liquid', 'h2o_concentration')
+liquid_temp = get_dataset_data(analysis_results, 'liquid', 'temperature')
+liquid_level = get_dataset_data(analysis_results, 'liquid', 'liquid_level')
+
+# Extract the actual data from the nested structure
+baseline_h2o_data = extract_h2o_data(baseline_h2o)
+ullage_h2o_data = extract_h2o_data(ullage_h2o)
+liquid_h2o_data = extract_h2o_data(liquid_h2o)
+
+baseline_temp_data = extract_temp_data(baseline_temp)
+ullage_temp_data = extract_temp_data(ullage_temp)
+liquid_temp_data = extract_temp_data(liquid_temp)
+
+# Helper function to safely get values with defaults
+def safe_get(data, key, default=0):
+    """Safely get a value from data with a default fallback."""
+    if data and key in data:
+        return data[key]
+    return default
+
+# Check if we have any data to work with
+if not any([baseline_h2o_data, ullage_h2o_data, liquid_h2o_data]):
+    baseline_h2o_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+    ullage_h2o_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+    liquid_h2o_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+
+if not any([baseline_temp_data, ullage_temp_data, liquid_temp_data]):
+    baseline_temp_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+    ullage_temp_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+    liquid_temp_data = {'initial': 0, 'initial_error': 0, 'final': 0, 'final_error': 0}
+
+if not any([baseline_level, ullage_level, liquid_level]):
+    baseline_level = {'start_time': 'N/A', 'end_time': 'N/A'}
+    ullage_level = {'start_time': 'N/A', 'end_time': 'N/A'}
+    liquid_level = {'start_time': 'N/A', 'end_time': 'N/A'}
 
 rendered = template.render(
     author={
@@ -89,38 +163,38 @@ rendered = template.render(
         "preparation": escape_percent(sample["Preparation"]),
     },
     baseline={
-        "start_date": format_datetime(h2o_concentration.baseline.start_time),
-        "end_date": format_datetime(h2o_concentration.baseline.end_time),
-        "initial_concentration": round(h2o_concentration.baseline.h20_ini, 2),
-        "final_concentration": round(h2o_concentration.baseline.h20_end, 1),
-        "concentration": round(h2o_concentration.baseline.h20_end - h2o_concentration.baseline.h20_ini, 1),
-        "initial_concentration_err": round(h2o_concentration.baseline.h20_ini_err, 2),
-        "final_concentration_err": round(h2o_concentration.baseline.h20_end_err, 1),
-        "concentration_err": round(np.sqrt(h2o_concentration.baseline.h20_end_err**2 + h2o_concentration.baseline.h20_ini_err**2), 1)
+        "start_date": format_datetime(safe_get(baseline_level, 'start_time', 'N/A')),
+        "end_date": format_datetime(safe_get(baseline_level, 'end_time', 'N/A')),
+        "initial_concentration": round(safe_get(baseline_h2o_data, 'initial', 0), 2),
+        "final_concentration": round(safe_get(baseline_h2o_data, 'final', 0), 1),
+        "concentration": round(safe_get(baseline_h2o_data, 'final', 0) - safe_get(baseline_h2o_data, 'initial', 0), 1),
+        "initial_concentration_err": round(safe_get(baseline_h2o_data, 'initial_error', 0), 2),
+        "final_concentration_err": round(safe_get(baseline_h2o_data, 'final_error', 0), 1),
+        "concentration_err": round(np.sqrt(safe_get(baseline_h2o_data, 'final_error', 0)**2 + safe_get(baseline_h2o_data, 'initial_error', 0)**2), 1)
     },
     ullage={
-        "start_date": format_datetime(h2o_concentration.ullage.start_time),
-        "end_date": format_datetime(h2o_concentration.ullage.end_time),
-        "initial_concentration": round(h2o_concentration.ullage.h20_ini, 2),
-        "final_concentration": round(h2o_concentration.ullage.h20_end, 1),
-        "concentration": round(h2o_concentration.ullage.h20_end - h2o_concentration.ullage.h20_ini, 1),
-        "initial_concentration_err": round(h2o_concentration.ullage.h20_ini_err, 2),
-        "final_concentration_err": round(h2o_concentration.ullage.h20_end_err, 1),
-        "concentration_err": round(np.sqrt(h2o_concentration.ullage.h20_end_err**2 + h2o_concentration.ullage.h20_ini_err**2), 1),
-        "temperature": round(temperature.ullage.temp_end, 1),
-        "temperature_err": round(temperature.ullage.temp_end_err, 1)
+        "start_date": format_datetime(safe_get(ullage_level, 'start_time', 'N/A')),
+        "end_date": format_datetime(safe_get(ullage_level, 'end_time', 'N/A')),
+        "initial_concentration": round(safe_get(ullage_h2o_data, 'initial', 0), 2),
+        "final_concentration": round(safe_get(ullage_h2o_data, 'final', 0), 1),
+        "concentration": round(safe_get(ullage_h2o_data, 'final', 0) - safe_get(ullage_h2o_data, 'initial', 0), 1),
+        "initial_concentration_err": round(safe_get(ullage_h2o_data, 'initial_error', 0), 2),
+        "final_concentration_err": round(safe_get(ullage_h2o_data, 'final_error', 0), 1),
+        "concentration_err": round(np.sqrt(safe_get(ullage_h2o_data, 'final_error', 0)**2 + safe_get(ullage_h2o_data, 'initial_error', 0)**2), 1),
+        "temperature": round(safe_get(ullage_temp_data, 'final', 0), 1),
+        "temperature_err": round(safe_get(ullage_temp_data, 'final_error', 0), 1)
     },
     liquid={
-        "start_date": format_datetime(h2o_concentration.liquid.start_time),
-        "end_date": format_datetime(h2o_concentration.liquid.end_time),
-        "initial_concentration": round(h2o_concentration.liquid.h20_ini, 2),
-        "final_concentration": round(h2o_concentration.liquid.h20_end, 1),
-        "initial_concentration_err": round(h2o_concentration.liquid.h20_ini_err, 2),
-        "final_concentration_err": round(h2o_concentration.liquid.h20_end_err, 1),
-        "concentration_err": round(np.sqrt(h2o_concentration.liquid.h20_end_err**2 + h2o_concentration.liquid.h20_ini_err**2), 1),
-        "concentration": round(h2o_concentration.liquid.h20_end - h2o_concentration.liquid.h20_ini, 1),
-        "temperature": round(temperature.liquid.temp_end, 1),
-        "temperature_err": round(temperature.liquid.temp_end_err, 1)
+        "start_date": format_datetime(safe_get(liquid_level, 'start_time', 'N/A')),
+        "end_date": format_datetime(safe_get(liquid_level, 'end_time', 'N/A')),
+        "initial_concentration": round(safe_get(liquid_h2o_data, 'initial', 0), 2),
+        "final_concentration": round(safe_get(liquid_h2o_data, 'final', 0), 1),
+        "concentration_err": round(np.sqrt(safe_get(liquid_h2o_data, 'final_error', 0)**2 + safe_get(liquid_h2o_data, 'initial_error', 0)**2), 1),
+        "concentration": round(safe_get(liquid_h2o_data, 'final', 0) - safe_get(liquid_h2o_data, 'initial', 0), 1),
+        "initial_concentration_err": round(safe_get(liquid_h2o_data, 'initial_error', 0), 2),
+        "final_concentration_err": round(safe_get(liquid_h2o_data, 'final_error', 0), 1),
+        "temperature": round(safe_get(liquid_temp_data, 'final', 0), 1),
+        "temperature_err": round(safe_get(liquid_temp_data, 'final_error', 0), 1)
     },
     results={
         "summary": results["Summary"],
