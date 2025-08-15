@@ -1,11 +1,15 @@
 import json
 from jinja2 import Template
 import subprocess
-from analysisClasses import Analysis
+import sys
+import os
+
+# Add the src directory to the path so we can import our modules
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from analysisClasses import Analysis, DatasetManager
 from datetime import datetime
 import numpy as np
-import os
-import sys
 import matplotlib.pyplot as plt
 plt.style.use("style.mplstyle")
 
@@ -34,18 +38,39 @@ if "signal" in h2o_parameters:
 elif "signal" not in h2o_parameters:
     signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
 
-analysis = Analysis(path=data["Data"]["Path"], name=data["Data"]["Name"])
+# Create dataset paths dictionary for the new DatasetManager
+data_path = data["Data"]["Path"]
+data_name = data["Data"]["Name"]
+dataset_paths = {
+    'baseline': f"{data_path}/{data_name}_baseline.xlsx",
+    'ullage': f"{data_path}/{data_name}_ullage.xlsx",
+    'liquid': f"{data_path}/{data_name}_liquid.xlsx"
+}
+
+# Initialize the new DatasetManager
+dataset_manager = DatasetManager(dataset_paths, data_name, json_file)
+
+# Create analysis object using the new structure
+analysis = Analysis(dataset_manager)
+
 fig1, ax1 = plt.subplots(figsize=(10, 6))
 fig2, ax2 = plt.subplots(figsize=(10, 6))
 fig3, ax3 = plt.subplots(figsize=(10, 6))
 fig4, ax4 = plt.subplots(figsize=(10, 6))
 
 # Run analyses and get results
-purity = analysis.purity(show=False, ax=ax1, manual=False)
+purity = analysis.purity(show=False, ax=ax1, manual=False,
+    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
+    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+
 h2o_concentration = analysis.h2oConcentration(show=False, ax=ax2, manual=h2o_parameters["manual"],
-    integration_time_ini=h2o_parameters["integration_time_ini"]*60, integration_time_end=h2o_parameters["integration_time_end"]*60,
-    offset_ini=h2o_parameters["offset_ini"]*60, offset_end=h2o_parameters["offset_end"]*60)
-temperature = analysis.temperature(show=False, ax=ax3, manual=False)
+    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
+    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+
+temperature = analysis.temperature(show=False, ax=ax3, manual=False,
+    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
+    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+
 level = analysis.level(ax=ax4, manual=False)
 
 # Save plots
@@ -86,16 +111,42 @@ def get_dataset_data(analysis_results, dataset_type, data_type):
 # Helper function to extract H2O data from the nested structure
 def extract_h2o_data(h2o_result):
     """Extract H2O concentration data from the analysis result structure."""
-    if h2o_result and 'h2o_data' in h2o_result:
-        return h2o_result['h2o_data']
-    return None
+    if h2o_result and 'h2o_data' in h2o_result and h2o_result['h2o_data'] is not None:
+        h2o_data = h2o_result['h2o_data']
+        # Convert to the format expected by the template
+        return {
+            'initial': h2o_data.get('h2o_ini', 0),
+            'initial_error': h2o_data.get('h2o_ini_err', 0),
+            'final': h2o_data.get('h2o_end', 0),
+            'final_error': h2o_data.get('h2o_end_err', 0)
+        }
+    # Return default values if no H2O data available
+    return {
+        'initial': 0,
+        'initial_error': 0,
+        'final': 0,
+        'final_error': 0
+    }
 
 # Helper function to extract temperature data from the nested structure
 def extract_temp_data(temp_result):
     """Extract temperature data from the analysis result structure."""
-    if temp_result and 'temperature_data' in temp_result:
-        return temp_result['temperature_data']
-    return None
+    if temp_result and 'temp_data' in temp_result and temp_result['temp_data'] is not None:
+        temp_data = temp_result['temp_data']
+        # Convert to the format expected by the template
+        return {
+            'initial': temp_data.get('temp_ini', 0),
+            'initial_error': temp_data.get('temp_ini_err', 0),
+            'final': temp_data.get('temp_end', 0),
+            'final_error': temp_data.get('temp_end_err', 0)
+        }
+    # Return default values if no temperature data available
+    return {
+        'initial': 0,
+        'initial_error': 0,
+        'final': 0,
+        'final_error': 0
+    }
 
 # Extract baseline data
 baseline_h2o = get_dataset_data(analysis_results, 'baseline', 'h2o_concentration')
@@ -205,10 +256,10 @@ rendered = template.render(
     },
     parameters={
         "h2o_parameters": {
-            "integration_time_ini": round(h2o_parameters["integration_time_ini"]*60, 0),
+            "integration_time_ini": round(h2o_parameters["integration_time_ini"], 0),
             "integration_time_end": h2o_parameters["integration_time_end"],
-            "offset_ini": round(h2o_parameters["offset_ini"]*60, 0),
-            "offset_end": h2o_parameters["offset_end"]
+            "offset_ini": round(h2o_parameters["offset_ini"], 0),
+            "offset_end": h2o_parameters["offset_end"]/60
         }
     },
     images={

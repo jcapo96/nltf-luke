@@ -1,7 +1,16 @@
-from dataClasses import Dataset
-import numpy as np
+import os
+import json
+from typing import Dict, List, Optional, Any
 import matplotlib.pyplot as plt
-from typing import Optional, Dict, Any, List
+import pandas as pd
+import numpy as np
+try:
+    from .dataFormats import DataFormatManager, StandardDataFormat
+    from .dataClasses import Dataset
+except ImportError:
+    # Fallback for when running as script
+    from dataFormats import DataFormatManager, StandardDataFormat
+    from dataClasses import Dataset
 from abc import ABC, abstractmethod
 
 
@@ -23,23 +32,64 @@ class BaseAnalysis(ABC):
 
 
 class DatasetManager:
-    """Manages multiple datasets for analysis."""
+    """
+    Manages multiple datasets and provides a unified interface for analysis.
 
-    def __init__(self, path: str, name: str):
-        self.path = path
+    This class handles loading, validation, and preparation of multiple datasets
+    from different sources and formats.
+    """
+
+    def __init__(self, dataset_paths: Dict[str, str], name: str, config_file: str = None):
+        """
+        Initialize the dataset manager.
+
+        Args:
+            dataset_paths: Dictionary mapping dataset types to file paths
+            name: Name for this dataset collection
+            config_file: Path to JSON configuration file (optional)
+        """
+        self.dataset_paths = dataset_paths
         self.name = name
         self.datasets: Dict[str, Dataset] = {}
+        self.format_manager = DataFormatManager()
+        self.config_file = config_file
+        self.preferred_converter = self._get_preferred_converter()
         self._load_datasets()
 
     def _load_datasets(self):
-        """Load all required datasets."""
-        dataset_types = ['baseline', 'ullage', 'liquid']
+        """Load all required datasets using the format manager and preferred converter."""
+        # Check if preferred converter is available
+        if self.preferred_converter:
+            # Verify the preferred converter exists
+            converter_exists = any(
+                converter.__class__.__name__ == self.preferred_converter
+                for converter in self.format_manager.converters
+            )
 
-        for dataset_type in dataset_types:
+            if not converter_exists:
+                print(f"Warning: Preferred converter '{self.preferred_converter}' not found.")
+                print(f"Available converters: {[c.__class__.__name__ for c in self.format_manager.converters]}")
+                print("Falling back to SeeqNewConverter...")
+                self.preferred_converter = "SeeqNewConverter"
+            else:
+                print(f"Using preferred converter: {self.preferred_converter}")
+        else:
+            print("No converter preference specified in config file.")
+            print("Using default converter: SeeqNewConverter")
+            self.preferred_converter = "SeeqNewConverter"
+
+        for dataset_type, file_path in self.dataset_paths.items():
             try:
-                file_path = f"{self.path}/{self.name}_{dataset_type}.xlsx"
-                self.datasets[dataset_type] = Dataset(path=file_path, name=dataset_type.capitalize())
+                # Check if the format manager can handle this file
+                if self.format_manager.can_convert(file_path):
+                    # Create and load the dataset
+                    dataset = Dataset(path=file_path, name=dataset_type.capitalize())
+                    dataset.load(self.format_manager)
+                    self.datasets[dataset_type] = dataset
+                else:
+                    print(f"Warning: No converter found for {file_path}")
             except Exception as e:
+                print(f"Warning: Could not load dataset {dataset_type}: {e}")
                 # Could not load dataset - continue with others
                 pass
 
@@ -57,18 +107,21 @@ class DatasetManager:
 
         for dataset_type, dataset in self.datasets.items():
             try:
-                dataset = self.datasets[dataset_type]
-                dataset.load()
+                # Load the dataset using the format manager
+                dataset.load(self.format_manager)
 
                 if dataset.liquid_level is None:
                     # Dataset missing liquid level data - skip
                     continue
 
-                start_time, end_time = dataset.liquid_level.find_times(manual=manual)[4:6]
+                # Get the times from find_times() method
+                times = dataset.liquid_level.find_times(manual=manual)
+                start_time = times['start_time']
+                end_time = times['end_time']
 
                 prepared_data[dataset_type] = {
                     'dataset': dataset,
-                    'times': dataset.liquid_level.find_times(manual=manual)
+                    'times': times
                 }
 
             except Exception as e:
@@ -76,6 +129,31 @@ class DatasetManager:
                 continue
 
         return prepared_data
+
+    def register_converter(self, converter):
+        """Register a new data converter with the format manager."""
+        self.format_manager.register_converter(converter)
+
+    def get_supported_formats(self) -> List[str]:
+        """Get list of supported format names."""
+        return self.format_manager.get_supported_formats()
+
+    def _get_preferred_converter(self) -> Optional[str]:
+        """
+        Loads converter preferences from a JSON configuration file.
+        Reads the 'Converter' key from the 'Data' section.
+        If no config file is provided, it returns None.
+        """
+        if self.config_file and os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    # Look for Converter in the Data section
+                    if 'Data' in config and 'Converter' in config['Data']:
+                        return config['Data']['Converter']
+            except Exception as e:
+                print(f"Warning: Could not load converter preference from {self.config_file}: {e}")
+        return None
 
 
 class PurityAnalysis(BaseAnalysis):
@@ -91,7 +169,9 @@ class PurityAnalysis(BaseAnalysis):
         }
 
     def analyze(self, show: bool = False, ax: Optional[plt.Axes] = None,
-                fit_legend: bool = False, manual: bool = False) -> 'PurityAnalysis':
+                manual: bool = False, integration_time_ini: int = 60,
+                integration_time_end: int = 480, offset_ini: int = 60,
+                offset_end: int = 0, fit_legend: bool = False) -> 'PurityAnalysis':
         """Analyze purity across all datasets."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -101,10 +181,28 @@ class PurityAnalysis(BaseAnalysis):
         for dataset_type, data in prepared_data.items():
             try:
                 dataset = data['dataset']
-                start_time, end_time = data['times'][4], data['times'][5]  # start_time and end_time
 
-                if dataset.purity is not None:
-                    purity_data = dataset.purity.calculate_purity(start_time, end_time)
+                # For purity analysis, use the find_times() method from liquid level processor
+                if dataset.purity is not None and dataset.liquid_level is not None:
+                    # Get the actual run start/end times from liquid level analysis
+                    level_times = dataset.liquid_level.find_times()
+                    start_time = level_times['start_time']
+                    end_time = level_times['end_time']
+
+                    if start_time is None or end_time is None:
+                        # Fallback to dataset's own time range
+                        purity_timestamp = dataset.standard_data.purity.index
+                        start_time = purity_timestamp.min()
+                        end_time = purity_timestamp.max()
+
+                    purity_data = dataset.purity.calculate_purity(
+                        start_time, end_time,
+                        integration_time_ini=integration_time_ini,
+                        integration_time_end=integration_time_end,
+                        offset_ini=offset_ini,
+                        offset_end=offset_end
+                    )
+
                     dataset.purity.plot_purity(
                         start_time, end_time, purity_data,
                         ax=ax, color=self.colors[dataset_type],
@@ -138,7 +236,9 @@ class TemperatureAnalysis(BaseAnalysis):
         }
 
     def analyze(self, show: bool = False, ax: Optional[plt.Axes] = None,
-                manual: bool = False) -> 'TemperatureAnalysis':
+                manual: bool = False, integration_time_ini: int = 60,
+                integration_time_end: int = 480, offset_ini: int = 60,
+                offset_end: int = 0) -> 'TemperatureAnalysis':
         """Analyze temperature across all datasets."""
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -149,19 +249,40 @@ class TemperatureAnalysis(BaseAnalysis):
         for dataset_type, data in prepared_data.items():
             try:
                 dataset = data['dataset']
-                start_time, end_time = data['times'][4], data['times'][5]
 
-                if dataset.temperature is not None:
-                    temp_data = dataset.temperature.calculate_temperature(start_time, end_time)
+                # For temperature analysis, use the find_times() method from liquid level processor
+                if dataset.temperature is not None and dataset.liquid_level is not None:
+                    # Get the actual run start/end times from liquid level analysis
+                    level_times = dataset.liquid_level.find_times()
+                    start_time = level_times['start_time']
+                    end_time = level_times['end_time']
+
+                    if start_time is None or end_time is None:
+                        # Fallback to dataset's own time range
+                        temp_timestamp = dataset.standard_data.temperature.index
+                        start_time = temp_timestamp.min()
+                        end_time = temp_timestamp.max()
+
+                    temp_data = dataset.temperature.calculate_temperature(
+                        start_time, end_time,
+                        integration_time_ini=integration_time_ini,
+                        integration_time_end=integration_time_end,
+                        offset_ini=offset_ini,
+                        offset_end=offset_end
+                    )
+
                     dataset.temperature.plot_temperature(
                         start_time, end_time, temp_data,
-                        ax=ax, color=self.colors[dataset_type], dataset_name=dataset_type.capitalize()
+                        ax=ax, color=self.colors[dataset_type],
+                        dataset_name=dataset_type.capitalize()
                     )
+
+                    # Track which datasets were plotted
                     plotted_datasets.append(dataset_type)
 
-                    # Store results
+                    # Store results for reporting
                     self._results[dataset_type] = {
-                        'temperature_data': temp_data,
+                        'temp_data': temp_data,
                         'start_time': start_time,
                         'end_time': end_time
                     }
@@ -172,6 +293,8 @@ class TemperatureAnalysis(BaseAnalysis):
 
         if plotted_datasets:
             ax.legend(ncol=len(plotted_datasets))
+        else:
+            ax.legend(ncol=1)
 
         return self
 
@@ -201,20 +324,35 @@ class H2OConcentrationAnalysis(BaseAnalysis):
         for dataset_type, data in prepared_data.items():
             try:
                 dataset = data['dataset']
-                start_time, end_time = data['times'][4], data['times'][5]
 
-                if dataset.h2o_concentration is not None:
-                    h2o_data = dataset.h2o_concentration.calculate_concentration(
+                # For H2O analysis, use the find_times() method from liquid level processor
+                if dataset.h2o_concentration is not None and dataset.liquid_level is not None:
+                    # Get the actual run start/end times from liquid level analysis
+                    level_times = dataset.liquid_level.find_times()
+                    start_time = level_times['start_time']
+                    end_time = level_times['end_time']
+
+                    if start_time is None or end_time is None:
+                        # Fallback to dataset's own time range
+                        h2o_timestamp = dataset.standard_data.h2o_concentration.index
+                        start_time = h2o_timestamp.min()
+                        end_time = h2o_timestamp.max()
+
+                    h2o_data = dataset.h2o_concentration.calculate_h2o_concentration(
                         start_time, end_time,
-                        integration_time_ini, integration_time_end,
-                        offset_ini, offset_end
+                        integration_time_ini=integration_time_ini,
+                        integration_time_end=integration_time_end,
+                        offset_ini=offset_ini,
+                        offset_end=offset_end
                     )
+
                     dataset.h2o_concentration.plot_concentration(
                         start_time, end_time, h2o_data,
-                        ax=ax, color=self.colors[dataset_type], dataset_name=dataset_type.capitalize()
+                        ax=ax, color=self.colors[dataset_type],
+                        dataset_name=dataset_type.capitalize()
                     )
 
-                    # Store results
+                    # Store results for reporting
                     self._results[dataset_type] = {
                         'h2o_data': h2o_data,
                         'start_time': start_time,
@@ -263,7 +401,7 @@ class LiquidLevelAnalysis(BaseAnalysis):
             'liquid': 'green'
         }
 
-    def analyze(self, ax: Optional[plt.Axes] = None, manual: bool = False,
+    def analyze(self, show: bool = False, ax: Optional[plt.Axes] = None, manual: bool = False,
                 fit_legend: bool = False) -> 'LiquidLevelAnalysis':
         """Analyze liquid level across all datasets."""
         if ax is None:
@@ -274,16 +412,27 @@ class LiquidLevelAnalysis(BaseAnalysis):
         for dataset_type, data in prepared_data.items():
             try:
                 dataset = data['dataset']
-                start_time, end_time = data['times'][4], data['times'][5]
 
-                if dataset.liquid_level is not None:
+                # For liquid level analysis, use the find_times() method from liquid level processor
+                if dataset.liquid_level is not None and dataset.liquid_level is not None:
+                    # Get the actual run start/end times from liquid level analysis
+                    level_times = dataset.liquid_level.find_times()
+                    start_time = level_times['start_time']
+                    end_time = level_times['end_time']
+
+                    if start_time is None or end_time is None:
+                        # Fallback to dataset's own time range
+                        level_timestamp = dataset.standard_data.liquid_level.index
+                        start_time = level_timestamp.min()
+                        end_time = level_timestamp.max()
+
                     dataset.liquid_level.plot_level(
                         start_time, end_time,
                         ax=ax, color=self.colors[dataset_type],
-                        fit_legend=fit_legend, dataset_name=dataset_type.capitalize()
+                        dataset_name=dataset_type.capitalize()
                     )
 
-                    # Store results
+                    # Store results for reporting
                     self._results[dataset_type] = {
                         'start_time': start_time,
                         'end_time': end_time
@@ -305,9 +454,9 @@ class Analysis:
     making it more modular and maintainable.
     """
 
-    def __init__(self, path: str, name: Optional[str] = None):
-        self.dataset_manager = DatasetManager(path, name)
-        self.name = name
+    def __init__(self, dataset_manager: DatasetManager):
+        self.dataset_manager = dataset_manager
+        self.name = dataset_manager.name
 
         # Initialize specialized analysis classes
         self.purity_analysis = PurityAnalysis(self.dataset_manager)
@@ -316,15 +465,29 @@ class Analysis:
         self.level_analysis = LiquidLevelAnalysis(self.dataset_manager)
 
     def purity(self, show: bool = False, ax: Optional[plt.Axes] = None,
-               fit_legend: bool = False, manual: bool = False) -> 'Analysis':
+               fit_legend: bool = False, manual: bool = False,
+               integration_time_ini: int = 60, integration_time_end: int = 480,
+               offset_ini: int = 60, offset_end: int = 0) -> 'Analysis':
         """Analyze purity across all datasets."""
-        self.purity_analysis.analyze(show=show, ax=ax, fit_legend=fit_legend, manual=manual)
+        self.purity_analysis.analyze(
+            show=show, ax=ax, fit_legend=fit_legend, manual=manual,
+            integration_time_ini=integration_time_ini,
+            integration_time_end=integration_time_end,
+            offset_ini=offset_ini, offset_end=offset_end
+        )
         return self
 
     def temperature(self, show: bool = False, ax: Optional[plt.Axes] = None,
-                   manual: bool = False) -> 'Analysis':
+                   manual: bool = False, integration_time_ini: int = 60,
+                   integration_time_end: int = 480, offset_ini: int = 60,
+                   offset_end: int = 0) -> 'Analysis':
         """Analyze temperature across all datasets."""
-        self.temperature_analysis.analyze(show=show, ax=ax, manual=manual)
+        self.temperature_analysis.analyze(
+            show=show, ax=ax, manual=manual,
+            integration_time_ini=integration_time_ini,
+            integration_time_end=integration_time_end,
+            offset_ini=offset_ini, offset_end=offset_end
+        )
         return self
 
     def h2oConcentration(self, show: bool = False, ax: Optional[plt.Axes] = None,
@@ -340,10 +503,10 @@ class Analysis:
         )
         return self
 
-    def level(self, ax: Optional[plt.Axes] = None, manual: bool = False,
+    def level(self, show: bool = False, ax: Optional[plt.Axes] = None, manual: bool = False,
               fit_legend: bool = False) -> 'Analysis':
         """Analyze liquid level across all datasets."""
-        self.level_analysis.analyze(ax=ax, manual=manual, fit_legend=fit_legend)
+        self.level_analysis.analyze(show=show, ax=ax, manual=manual, fit_legend=fit_legend)
         return self
 
     def get_analysis_results(self) -> Dict[str, Dict[str, Any]]:

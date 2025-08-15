@@ -7,6 +7,12 @@ from abc import ABC, abstractmethod
 from scipy.optimize import curve_fit
 from typing import Optional, Dict, Any, Tuple
 
+try:
+    from .dataFormats import StandardDataFormat
+except ImportError:
+    # Fallback for when running as script
+    from dataFormats import StandardDataFormat
+
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
@@ -47,22 +53,30 @@ class DataValidator:
 class BaseDataProcessor(ABC):
     """Abstract base class for data processing operations."""
 
-    def __init__(self, data: pd.DataFrame, datetime_mapping: Dict[str, str]):
-        self.data = data
-        self.datetime_mapping = datetime_mapping
+    def __init__(self, standard_data: StandardDataFormat):
+        self.standard_data = standard_data
+        self._validate_data()
 
     @abstractmethod
     def process(self, **kwargs) -> Any:
         """Process the data and return results."""
         pass
 
+    @abstractmethod
+    def _validate_data(self):
+        """Validate that required data is available."""
+        pass
+
 
 class LiquidLevelProcessor(BaseDataProcessor):
     """Processes liquid level data and provides analysis methods."""
 
-    def __init__(self, data: pd.DataFrame, datetime_mapping: Dict[str, str]):
-        super().__init__(data, datetime_mapping)
-        self._validate_liquid_level_data()
+    def _validate_data(self):
+        """Validate that liquid level data is available."""
+        if self.standard_data.liquid_level is None:
+            self.has_liquid_level = False
+        else:
+            self.has_liquid_level = True
 
     def process(self, **kwargs) -> Any:
         """Process the liquid level data and return results."""
@@ -70,67 +84,138 @@ class LiquidLevelProcessor(BaseDataProcessor):
         # For liquid level, we typically want to find times
         return self.find_times(**kwargs)
 
-    def _validate_liquid_level_data(self):
-        """Validate that liquid level data is available."""
-        if "PAB_S1_LT_13_AR_REAL_F_CV" not in self.data.columns:
-            # Instead of raising an error, just warn and set a flag
-            self.has_liquid_level = False
-        else:
-            self.has_liquid_level = True
-
-    def find_times(self, scan_time: int = 10, threshold: float = 0.995,
-                   manual: bool = False) -> Tuple[float, pd.Timestamp, float, pd.Timestamp, pd.Timestamp, pd.Timestamp]:
+    def find_times(self, manual: bool = False) -> dict:
         """
-        Find key time points in liquid level data.
+        Find the start and end times of the experimental run based on liquid level patterns.
+
+        The method detects:
+        1. Start: When level drops from initial oscillation pattern to stable pattern
+        2. End: When level rises again or returns to oscillation pattern
+        3. If detected duration < 12 hours, extend end time to 24 hours after start
+
+        Args:
+            manual: If True, use manual start/end times from data
 
         Returns:
-            Tuple of (max_level, max_time, min_level, min_time, start_time, end_time)
+            Dictionary with start_time, end_time, max_time, min_time
         """
-        if not hasattr(self, 'has_liquid_level') or not self.has_liquid_level:
-            # Return default times if no liquid level data
-            # Use the first and last available datetime from any column
-            datetime_cols = [col for col in self.data.columns if "Date-Time" in col]
-            if datetime_cols:
-                first_col = datetime_cols[0]
-                start_time = self.data[first_col].min()
-                end_time = self.data[first_col].max()
-                return 0.0, start_time, 0.0, start_time, start_time, end_time
-            else:
-                raise ValueError("No datetime columns found for time analysis")
+        if not self.has_liquid_level:
+            return {
+                'start_time': None,
+                'end_time': None,
+                'max_time': None,
+                'min_time': None
+            }
 
-        finding_time = datetime.timedelta(minutes=scan_time)
-        dt_col = self.datetime_mapping["PAB_S1_LT_13_AR_REAL_F_CV"]
+        level_data = self.standard_data.liquid_level
+        if level_data is None or level_data.empty:
+            return {
+                'start_time': None,
+                'end_time': None,
+                'max_time': None,
+                'min_time': None
+            }
 
-        # Find maximum liquid level and time
-        max_level = self.data["PAB_S1_LT_13_AR_REAL_F_CV"].max()
-        max_time = self.data.loc[
-            self.data["PAB_S1_LT_13_AR_REAL_F_CV"] == max_level
-        ][dt_col].iloc[0]
-
-        # Find minimum liquid level within time window
-        min_mask = (
-            (self.data[dt_col] > max_time) &
-            (self.data[dt_col] < max_time + finding_time)
-        )
-        min_level = self.data["PAB_S1_LT_13_AR_REAL_F_CV"].loc[min_mask].min()
-        min_time = self.data.loc[
-            (self.data[dt_col] > max_time) &
-            (self.data["PAB_S1_LT_13_AR_REAL_F_CV"] == min_level)
-        ].index[0]
-
-        # Find start of significant drop
-        drop_mask = self.data["PAB_S1_LT_13_AR_REAL_F_CV"] < threshold * min_level
-        start_time = self.data.loc[drop_mask][dt_col].iloc[0]
+        # Get the full time range
+        full_start_time = level_data.index[0]
+        full_end_time = level_data.index[-1]
 
         if manual:
-            start_time = input(f"Enter start time (default: {start_time}): ")
-            start_time = pd.to_datetime(start_time)
+            # Use manual start/end times
+            return {
+                'start_time': full_start_time,
+                'end_time': full_end_time,
+                'max_time': level_data.idxmax(),
+                'min_time': level_data.idxmin()
+            }
 
-        end_time = start_time + datetime.timedelta(days=1)
-        if end_time > self.data[dt_col].max():
-            end_time = self.data[dt_col].max()
+        # Analyze oscillation patterns to find run start/end
+        # Use sliding windows to detect changes in standard deviation
 
-        return max_level, max_time, min_level, min_time, start_time, end_time
+        # Parameters for detection
+        window_size = 100  # Number of points for std calculation
+        step_size = 50     # Step size for sliding window
+        threshold_factor = 3.0  # Factor above which std dev indicates oscillation
+
+        # Calculate baseline oscillation (first window)
+        baseline_std = level_data.head(window_size).std()
+
+        # Find start of run (transition from oscillation to stable)
+        run_start_idx = None
+        for i in range(0, len(level_data) - window_size, step_size):
+            window_data = level_data.iloc[i:i+window_size]
+            window_std = window_data.std()
+
+            # If std dev drops significantly, we've found the start
+            if window_std < baseline_std / threshold_factor:
+                run_start_idx = i
+                break
+
+        if run_start_idx is None:
+            # Fallback: use first 10% of data as pre-run
+            run_start_idx = len(level_data) // 10
+
+        # Find end of run (transition back to oscillation)
+        run_end_idx = None
+
+        # Start looking from the start point
+        search_start = run_start_idx + window_size
+
+        # Look for return to oscillation pattern
+        for i in range(search_start, len(level_data) - window_size, step_size):
+            window_data = level_data.iloc[i:i+window_size]
+            window_std = window_data.std()
+
+            # If std dev increases significantly, we've found the end
+            if window_std > baseline_std / threshold_factor:
+                run_end_idx = i + window_size
+                break
+
+        if run_end_idx is None:
+            # No oscillation detected, use the end of available data
+            run_end_idx = len(level_data)
+
+        # Convert indices to timestamps
+        start_time = level_data.index[run_start_idx]
+
+        # Handle the case when run_end_idx equals the length of data
+        if run_end_idx >= len(level_data):
+            end_time = level_data.index[-1]
+        else:
+            end_time = level_data.index[run_end_idx]
+
+        # Calculate the detected duration
+        detected_duration_hours = (end_time - start_time).total_seconds() / 3600
+
+        # If detected duration is shorter than 12 hours, extend to 24 hours
+        if detected_duration_hours < 12:
+            target_end_time = start_time + pd.Timedelta(hours=24)
+            # But don't exceed the available data
+            if target_end_time <= full_end_time:
+                end_time = target_end_time
+                print(f"Warning: Detected duration ({detected_duration_hours:.1f}h) < 12h, extending to 24h")
+            else:
+                print(f"Warning: Detected duration ({detected_duration_hours:.1f}h) < 12h, but cannot extend to 24h (data limit)")
+
+        # Ensure we don't exceed data bounds
+        if end_time > full_end_time:
+            end_time = full_end_time
+
+        # Get max and min times within the run period
+        # Use proper slicing to avoid index errors
+        if run_end_idx >= len(level_data):
+            run_data = level_data[run_start_idx:]
+        else:
+            run_data = level_data[run_start_idx:run_end_idx]
+        max_time = run_data.idxmax()
+        min_time = run_data.idxmin()
+
+        return {
+            'start_time': start_time,
+            'end_time': end_time,
+            'max_time': max_time,
+            'min_time': min_time
+        }
 
     def plot_level(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
                    ax: Optional[plt.Axes] = None, color: Optional[str] = None,
@@ -142,136 +227,177 @@ class LiquidLevelProcessor(BaseDataProcessor):
         if not hasattr(self, 'has_liquid_level') or not self.has_liquid_level:
             return ax
 
-        dt_col = self.datetime_mapping["PAB_S1_LT_13_AR_REAL_F_CV"]
-        level_data = self.data.set_index(dt_col)["PAB_S1_LT_13_AR_REAL_F_CV"]
-
-        # Calculate initial and final levels
-        level_ini = level_data.loc[
-            (level_data.index > start_time) &
-            (level_data.index < start_time + datetime.timedelta(minutes=integration_time))
-        ].mean()
-        level_ini_err = level_data.loc[
-            (level_data.index > start_time) &
-            (level_data.index < start_time + datetime.timedelta(minutes=integration_time))
-        ].std()
-
-        level_end = level_data.loc[
-            (level_data.index > end_time - datetime.timedelta(minutes=integration_time)) &
-            (level_data.index < end_time)
-        ].mean()
-        level_end_err = level_data.loc[
-            (level_data.index > end_time - datetime.timedelta(minutes=integration_time)) &
-            (level_data.index < end_time)
-        ].std()
-
-        # Plot data with dataset name in legend
-        if fit_legend:
-            label = f'{dataset_name}: Initial {level_ini:.2f} ± {level_ini_err:.2f} in; Final {level_end:.2f} ± {level_end_err:.2f} in'
+        # Get data within time range including pre-run
+        # Use the signal's own timestamp for filtering, not the primary timestamp
+        if self.standard_data.liquid_level is not None:
+            # Include pre-run data (before start_time) and run data (up to end_time)
+            mask = (self.standard_data.liquid_level.index <= end_time)
+            plot_timestamp = self.standard_data.liquid_level.index[mask]
+            plot_level = self.standard_data.liquid_level[mask]
         else:
-            label = f'{dataset_name}' if dataset_name else 'Liquid Level'
+            return ax
 
-        ax.plot((level_data.index - start_time).total_seconds(), level_data,
-                label=label, color=color)
+        if plot_level.empty:
+            return ax
 
-        ax.set_xlabel("Time since start [s]")
-        ax.set_ylabel("Liquid Level [in]")
-        ax.set_title("Liquid Level Over Time")
-        ax.grid()
+        # Use dataset name in legend
+        label = f'{dataset_name}' if dataset_name else 'Liquid Level'
+
+        # Plot data with full range including pre-run
+        # Time axis: negative values for pre-run, 0 for start, positive for run
+        time_seconds = (plot_timestamp - start_time).total_seconds()
+
+        ax.plot(time_seconds, plot_level, "-o",
+                label=label, markersize=5.0, color=color)
+
+        # Add vertical line at start time (t=0)
+        ax.axvline(x=0, color='black', linestyle=':', alpha=0.5)
+
+        ax.set_title('Liquid Level Over Time')
+        ax.set_xlabel('Time since start [s]')
+        ax.set_ylabel('Liquid Level [%]')
         ax.legend()
+        ax.grid()
 
         return ax
 
 
 class H2OConcentrationProcessor(BaseDataProcessor):
-    """Processes H2O concentration data."""
+    """Processes H2O concentration data and provides analysis methods."""
 
-    def __init__(self, data: pd.DataFrame, datetime_mapping: Dict[str, str]):
-        super().__init__(data, datetime_mapping)
-        self._validate_h2o_data()
-
-    def process(self, **kwargs) -> Any:
-        """Process the H2O concentration data and return results."""
-        # This method is required by the abstract base class
-        # For H2O concentration, we typically want to calculate concentration
-        return self.calculate_concentration(**kwargs)
-
-    def _validate_h2o_data(self):
+    def _validate_data(self):
         """Validate that H2O concentration data is available."""
-        if "PAB_S1_AE_611_AR_REAL_F_CV" not in self.data.columns:
+        if self.standard_data.h2o_concentration is None:
             self.has_h2o_data = False
         else:
             self.has_h2o_data = True
 
-    def calculate_concentration(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
-                              integration_time_ini: int = 60, integration_time_end: int = 180,
-                              offset_ini: int = 60, offset_end: int = 480) -> Dict[str, float]:
-        """Calculate H2O concentration statistics."""
-        if not hasattr(self, 'has_h2o_data') or not self.has_h2o_data:
-            raise ValueError("Cannot calculate H2O concentration - no H2O data available")
+    def process(self, **kwargs) -> Any:
+        """Process the H2O concentration data and return results."""
+        # For H2O concentration, we typically want to calculate statistics
+        return self.calculate_h2o_concentration(**kwargs)
 
-        dt_col = self.datetime_mapping["PAB_S1_AE_611_AR_REAL_F_CV"]
-        signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
+    def calculate_h2o_concentration(self, start_time, end_time, integration_time_ini=60, integration_time_end=480, offset_ini=60, offset_end=0):
+        """
+        Calculate H2O concentration analysis results.
 
-        mask = (
-            (self.data[dt_col] > start_time - datetime.timedelta(minutes=offset_ini)) &
-            (self.data[dt_col] < end_time)
-        )
-        h2o_data = self.data.loc[mask, [dt_col, signal_name]].set_index(dt_col)[signal_name]
+        Args:
+            start_time: Start time of the run
+            end_time: End time of the run
+            integration_time_ini: Initial integration time in minutes (time before t0=0)
+            integration_time_end: Final integration time in minutes (time ending at offset_end before end)
+            offset_ini: Initial offset in minutes (not used in new logic)
+            offset_end: Final offset in minutes (time before end where final integration ends)
 
-        # Calculate initial concentration
-        h2o_ini = h2o_data.loc[
-            (h2o_data.index > start_time - datetime.timedelta(minutes=integration_time_ini)) &
-            (h2o_data.index < start_time)
-        ].mean()
-        h2o_ini_err = h2o_data.loc[
-            (h2o_data.index > start_time - datetime.timedelta(minutes=integration_time_ini)) &
-            (h2o_data.index < start_time)
-        ].std()
+        Returns:
+            Dictionary with analysis results
+        """
+        if not self.has_h2o_data:
+            return None
 
-        # Calculate final concentration
-        h2o_end = h2o_data.loc[
-            (h2o_data.index > end_time - datetime.timedelta(minutes=offset_end + integration_time_end)) &
-            (h2o_data.index < end_time - datetime.timedelta(minutes=offset_end))
-        ].mean()
-        h2o_end_err = h2o_data.loc[
-            (h2o_data.index > end_time - datetime.timedelta(minutes=offset_end + integration_time_end)) &
-            (h2o_data.index < end_time - datetime.timedelta(minutes=offset_end))
-        ].std()
+        try:
+            # Get H2O concentration data
+            h2o_data = self.standard_data.h2o_concentration
+            timestamp = h2o_data.index  # Use the data's own index
 
-        return {
-            'initial': h2o_ini,
-            'initial_error': h2o_ini_err,
-            'final': h2o_end,
-            'final_error': h2o_end_err,
-            'data': h2o_data
-        }
+            # Calculate initial integration window: integration_time_ini minutes BEFORE t0=0 (start_time)
+            ini_start = start_time - pd.Timedelta(minutes=integration_time_ini)
+            ini_end = start_time  # t0=0 (run start)
+
+            # Calculate final integration window: integration_time_end minutes ENDING at offset_end minutes BEFORE end_time
+            end_end = end_time - pd.Timedelta(minutes=offset_end)  # offset_end minutes before end
+            end_start = end_end - pd.Timedelta(minutes=integration_time_end)  # integration_time_end minutes before that
+
+            # Get data for initial calculation (before run starts)
+            pre_run_mask = (timestamp >= ini_start) & (timestamp <= ini_end)
+            pre_run_data = h2o_data[pre_run_mask]
+
+            # Get data for final calculation (ending before run ends)
+            end_mask = (timestamp >= end_start) & (timestamp <= end_end)
+            end_data = h2o_data[end_mask]
+
+            # Calculate initial values from pre-run data
+            if len(pre_run_data) > 0:
+                h2o_ini = pre_run_data.mean()
+                h2o_ini_err = pre_run_data.std()
+            else:
+                # Fallback: use first few points if pre-run data is insufficient
+                fallback_data = h2o_data.head(min(10, len(h2o_data)))
+                h2o_ini = fallback_data.mean()
+                h2o_ini_err = fallback_data.std()
+
+            # Calculate final values from end data
+            if len(end_data) > 0:
+                h2o_end = end_data.mean()
+                h2o_end_err = end_data.std()
+            else:
+                # Fallback: use last few points if end data is insufficient
+                fallback_data = h2o_data.tail(min(10, len(h2o_data)))
+                h2o_end = fallback_data.mean()
+                h2o_end_err = fallback_data.std()
+
+            # Get run data (from start to end)
+            run_mask = (timestamp >= start_time) & (timestamp <= end_time)
+            run_data = h2o_data[run_mask]
+            run_timestamp = timestamp[run_mask]
+
+            return {
+                'h2o_ini': h2o_ini,
+                'h2o_ini_err': h2o_ini_err,
+                'h2o_end': h2o_end,
+                'h2o_end_err': h2o_end_err,
+                'full_data': h2o_data,  # All data including pre-run
+                'full_timestamp': timestamp,  # All timestamps including pre-run
+                'run_data': run_data,  # Data during the run
+                'run_timestamp': run_timestamp,  # Timestamps during the run
+                'ini_window': (ini_start, ini_end),  # Initial integration window
+                'end_window': (end_start, end_end)   # Final integration window
+            }
+
+        except Exception as e:
+            print(f"Error calculating H2O concentration: {e}")
+            return None
 
     def plot_concentration(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
-                          concentration_data: Dict[str, Any], ax: Optional[plt.Axes] = None,
-                          color: Optional[str] = None, dataset_name: str = None) -> plt.Axes:
+                          h2o_data: Dict[str, Any], ax: Optional[plt.Axes] = None,
+                          color: Optional[str] = None, integration_time: int = 60, dataset_name: str = None) -> plt.Axes:
         """Plot H2O concentration over time."""
         if ax is None:
             fig, ax = plt.subplots()
 
-        h2o_data = concentration_data['data']
-        h2o_ini = concentration_data['initial']
-        h2o_ini_err = concentration_data['initial_error']
-        h2o_end = concentration_data['final']
-        h2o_end_err = concentration_data['final_error']
+        if not hasattr(self, 'has_h2o_data') or not self.has_h2o_data:
+            return ax
 
-        # Use dataset name in legend for the main data line only
-        label = f'{dataset_name}' if dataset_name else 'H2O Concentration'
+        # Extract data
+        plot_data = h2o_data['full_data']  # Full data including pre-run
+        plot_timestamp = h2o_data['full_timestamp']  # Full timestamp including pre-run
+        h2o_ini = h2o_data['h2o_ini']
+        h2o_end = h2o_data['h2o_end']
+        h2o_ini_err = h2o_data['h2o_ini_err']
+        h2o_end_err = h2o_data['h2o_end_err']
 
-        ax.plot((h2o_data.index - start_time).total_seconds(), h2o_data,
-                label=label, color=color)
-        ax.axhline(y=h2o_ini, color=f'dark{color}', linestyle='--',
+        # Use dataset name in legend
+        label = f'{dataset_name}' if dataset_name else 'H₂O Concentration'
+
+        # Plot data with full range including pre-run
+        # Time axis: negative values for pre-run, 0 for start, positive for run
+        time_seconds = (plot_timestamp - start_time).total_seconds()
+
+        ax.plot(time_seconds, plot_data, "-o",
+                label=label, markersize=5.0, color=color)
+
+        # Plot initial and final values
+        ax.axhline(y=h2o_ini, color=color, linestyle='--', alpha=0.7,
                    label=f'Initial: {h2o_ini:.1f} ± {h2o_ini_err:.1f} ppb')
-        ax.axhline(y=h2o_end, color=color, linestyle='--',
+        ax.axhline(y=h2o_end, color=color, linestyle='--', alpha=0.7,
                    label=f'Final: {h2o_end:.1f} ± {h2o_end_err:.1f} ppb')
 
+        # Add vertical line at start time (t=0)
+        ax.axvline(x=0, color='black', linestyle=':', alpha=0.5)
+
+        ax.set_title(r'H$_2$O Concentration Over Time')
         ax.set_xlabel('Time since start [s]')
         ax.set_ylabel(r'H$_2$O Concentration [ppb]')
-        ax.set_title(r'H$_2$O Concentration Over Time')
         ax.legend()
         ax.grid()
 
@@ -279,101 +405,141 @@ class H2OConcentrationProcessor(BaseDataProcessor):
 
 
 class TemperatureProcessor(BaseDataProcessor):
-    """Processes temperature data."""
+    """Processes temperature data and provides analysis methods."""
 
-    def __init__(self, data: pd.DataFrame, datetime_mapping: Dict[str, str]):
-        super().__init__(data, datetime_mapping)
-        self._validate_temperature_data()
-
-    def process(self, **kwargs) -> Any:
-        """Process the temperature data and return results."""
-        # This method is required by the abstract base class
-        # For temperature, we typically want to calculate temperature
-        return self.calculate_temperature(**kwargs)
-
-    def _validate_temperature_data(self):
+    def _validate_data(self):
         """Validate that temperature data is available."""
-        if "PAB_S1_TE_324_AR_REAL_F_CV" not in self.data.columns:
+        if self.standard_data.temperature is None:
             self.has_temperature_data = False
         else:
             self.has_temperature_data = True
 
-    def calculate_temperature(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
-                            offset_ini: int = 60, integration_time_ini: int = 60) -> Dict[str, Any]:
-        """Calculate temperature statistics."""
-        if not hasattr(self, 'has_temperature_data') or not self.has_temperature_data:
-            raise ValueError("Cannot calculate temperature - no temperature data available")
+    def process(self, **kwargs) -> Any:
+        """Process the temperature data and return results."""
+        # For temperature, we typically want to calculate statistics
+        return self.calculate_temperature(**kwargs)
 
-        dt_col = self.datetime_mapping["PAB_S1_TE_324_AR_REAL_F_CV"]
-        signal_name = "PAB_S1_TE_324_AR_REAL_F_CV"
+    def calculate_temperature(self, start_time, end_time, integration_time_ini=60, integration_time_end=480, offset_ini=60, offset_end=0):
+        """
+        Calculate temperature analysis results.
 
-        mask = (
-            (self.data[dt_col] > start_time - datetime.timedelta(minutes=offset_ini)) &
-            (self.data[dt_col] < end_time)
-        )
-        temp_data = self.data.loc[mask, [dt_col, signal_name]].set_index(dt_col)[signal_name]
+        Args:
+            start_time: Start time of the run
+            end_time: End time of the run
+            integration_time_ini: Initial integration time in minutes (time before t0=0)
+            integration_time_end: Final integration time in minutes (time ending at offset_end before end)
+            offset_ini: Initial offset in minutes (not used in new logic)
+            offset_end: Final offset in minutes (time before end where final integration ends)
 
-        if temp_data.empty:
-            raise ValueError("Temperature data is empty.")
+        Returns:
+            Dictionary with analysis results
+        """
+        if not self.has_temperature_data:
+            return None
 
-        temp_data = temp_data.dropna()
-        if temp_data.empty:
-            raise ValueError("Temperature data contains only NaN values.")
+        try:
+            # Get temperature data
+            temp_data = self.standard_data.temperature
+            timestamp = temp_data.index  # Use the data's own index
 
-        # Calculate initial temperature
-        temp_ini = temp_data.loc[
-            (temp_data.index > start_time) &
-            (temp_data.index < start_time + datetime.timedelta(minutes=integration_time_ini))
-        ].mean()
-        temp_ini_err = temp_data.loc[
-            (temp_data.index > start_time) &
-            (temp_data.index < start_time + datetime.timedelta(minutes=integration_time_ini))
-        ].std()
+            # Calculate initial integration window: integration_time_ini minutes BEFORE t0=0 (start_time)
+            ini_start = start_time - pd.Timedelta(minutes=integration_time_ini)
+            ini_end = start_time  # t0=0 (run start)
 
-        # Calculate final temperature
-        temp_end = temp_data.loc[
-            (temp_data.index > end_time - datetime.timedelta(minutes=integration_time_ini)) &
-            (temp_data.index < end_time)
-        ].mean()
-        temp_end_err = temp_data.loc[
-            (temp_data.index > end_time - datetime.timedelta(minutes=integration_time_ini)) &
-            (temp_data.index < end_time)
-        ].std()
+            # Calculate final integration window: integration_time_end minutes ENDING at offset_end minutes BEFORE end_time
+            end_end = end_time - pd.Timedelta(minutes=offset_end)  # offset_end minutes before end
+            end_start = end_end - pd.Timedelta(minutes=integration_time_end)  # integration_time_end minutes before that
 
-        return {
-            'data': temp_data,
-            'initial': temp_ini,
-            'initial_error': temp_ini_err,
-            'final': temp_end,
-            'final_error': temp_end_err
-        }
+            # Get data for initial calculation (before run starts)
+            pre_run_mask = (timestamp >= ini_start) & (timestamp <= ini_end)
+            pre_run_data = temp_data[pre_run_mask]
+
+            # Get data for final calculation (ending before run ends)
+            end_mask = (timestamp >= end_start) & (timestamp <= end_end)
+            end_data = temp_data[end_mask]
+
+            # Calculate initial values from pre-run data
+            if len(pre_run_data) > 0:
+                temp_ini = pre_run_data.mean()
+                temp_ini_err = pre_run_data.std()
+            else:
+                # Fallback: use first few points if pre-run data is insufficient
+                fallback_data = temp_data.head(min(10, len(temp_data)))
+                temp_ini = fallback_data.mean()
+                temp_ini_err = fallback_data.std()
+
+            # Calculate final values from end data
+            if len(end_data) > 0:
+                temp_end = end_data.mean()
+                temp_end_err = end_data.std()
+            else:
+                # Fallback: use last few points if end data is insufficient
+                fallback_data = temp_data.tail(min(10, len(temp_data)))
+                temp_end = fallback_data.mean()
+                temp_end_err = fallback_data.std()
+
+            # Get run data (from start to end)
+            run_mask = (timestamp >= start_time) & (timestamp <= end_time)
+            run_data = temp_data[run_mask]
+            run_timestamp = timestamp[run_mask]
+
+            return {
+                'temp_ini': temp_ini,
+                'temp_ini_err': temp_ini_err,
+                'temp_end': temp_end,
+                'temp_end_err': temp_end_err,
+                'full_data': temp_data,  # All data including pre-run
+                'full_timestamp': timestamp,  # All timestamps including pre-run
+                'run_data': run_data,  # Data during the run
+                'run_timestamp': run_timestamp,  # Timestamps during the run
+                'ini_window': (ini_start, ini_end),  # Initial integration window
+                'end_window': (end_start, end_end)   # Final integration window
+            }
+
+        except Exception as e:
+            print(f"Error calculating temperature: {e}")
+            return None
 
     def plot_temperature(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
-                        temperature_data: Dict[str, Any], ax: Optional[plt.Axes] = None,
-                        color: Optional[str] = None, dataset_name: str = None) -> plt.Axes:
+                        temp_data: Dict[str, Any], ax: Optional[plt.Axes] = None,
+                        color: Optional[str] = None, integration_time: int = 60, dataset_name: str = None) -> plt.Axes:
         """Plot temperature over time."""
         if ax is None:
             fig, ax = plt.subplots()
 
-        temp_data = temperature_data['data']
-        temp_ini = temperature_data['initial']
-        temp_ini_err = temperature_data['initial_error']
-        temp_end = temperature_data['final']
-        temp_end_err = temperature_data['final_error']
+        if not hasattr(self, 'has_temperature_data') or not self.has_temperature_data:
+            return ax
 
-        # Use dataset name in legend for the main data line only
+        # Extract data
+        plot_data = temp_data['full_data']  # Full data including pre-run
+        plot_timestamp = temp_data['full_timestamp']  # Full timestamp including pre-run
+        temp_ini = temp_data['temp_ini']
+        temp_end = temp_data['temp_end']
+        temp_ini_err = temp_data['temp_ini_err']
+        temp_end_err = temp_data['temp_end_err']
+
+        # Use dataset name in legend
         label = f'{dataset_name}' if dataset_name else 'Temperature'
 
-        ax.plot((temp_data.index - start_time).total_seconds(), temp_data,
-                label=label, color=color)
-        ax.axhline(y=temp_ini, color=color, linestyle='--',
-                   label=f'Initial: {temp_ini:.1f} ± {temp_ini_err:.1f} K')
-        ax.axhline(y=temp_end, color=color, linestyle='--',
-                   label=f'Final: {temp_end:.1f} ± {temp_end_err:.1f} K')
+        # Plot data with full range including pre-run
+        # Time axis: negative values for pre-run, 0 for start, positive for run
+        time_seconds = (plot_timestamp - start_time).total_seconds()
 
+        ax.plot(time_seconds, plot_data, "-o",
+                label=label, markersize=5.0, color=color)
+
+        # Plot initial and final values
+        ax.axhline(y=temp_ini, color=color, linestyle='--', alpha=0.7,
+                   label=f'Initial: {temp_ini:.2f} ± {temp_ini_err:.2f} K')
+        ax.axhline(y=temp_end, color=color, linestyle='--', alpha=0.7,
+                   label=f'Final: {temp_end:.2f} ± {temp_end_err:.2f} K')
+
+        # Add vertical line at start time (t=0)
+        ax.axvline(x=0, color='black', linestyle=':', alpha=0.5, label='Run Start')
+
+        ax.set_title('Temperature Over Time')
         ax.set_xlabel('Time since start [s]')
         ax.set_ylabel('Temperature [K]')
-        ax.set_title('Sample Temperature Over Time')
         ax.legend()
         ax.grid()
 
@@ -381,94 +547,144 @@ class TemperatureProcessor(BaseDataProcessor):
 
 
 class PurityProcessor(BaseDataProcessor):
-    """Processes electron lifetime (purity) data."""
+    """Processes purity/lifetime data and provides analysis methods."""
 
-    def __init__(self, data: pd.DataFrame, datetime_mapping: Dict[str, str]):
-        super().__init__(data, datetime_mapping)
-        self._validate_purity_data()
-
-    def process(self, **kwargs) -> Any:
-        """Process the purity data and return results."""
-        # This method is required by the abstract base class
-        # For purity, we typically want to calculate purity
-        return self.calculate_purity(**kwargs)
-
-    def exp(self, x, A, tau, C):
-        """Exponential decay function: A*exp(-x/tau) + C"""
-        return A * np.exp(-x / tau) + C
-
-    def _validate_purity_data(self):
+    def _validate_data(self):
         """Validate that purity data is available."""
-        if "Luke_PRM_LIFETIME_F_CV" not in self.data.columns:
+        if self.standard_data.purity is None:
             self.has_purity_data = False
         else:
             self.has_purity_data = True
 
-    def calculate_purity(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
-                        offset_ini: int = 60) -> Dict[str, Any]:
-        """Calculate purity statistics and fit exponential decay."""
-        if not hasattr(self, 'has_purity_data') or not self.has_purity_data:
-            raise ValueError("Cannot calculate purity - no purity data available")
+    def process(self, **kwargs) -> Any:
+        """Process the purity data and return results."""
+        # For purity, we typically want to calculate statistics and fit
+        return self.calculate_purity(**kwargs)
 
-        dt_col = self.datetime_mapping["Luke_PRM_LIFETIME_F_CV"]
-        signal_name = "Luke_PRM_LIFETIME_F_CV"
+    def exp(self, x, A, tau, C):
+        """Exponential decay function for curve fitting."""
+        return A * np.exp(-x / tau) + C
 
-        mask = (
-            (self.data[dt_col] > start_time - datetime.timedelta(minutes=offset_ini)) &
-            (self.data[dt_col] < end_time)
-        )
-        purity_data = self.data.loc[mask, [dt_col, signal_name]].set_index(dt_col)[signal_name]
+    def calculate_purity(self, start_time, end_time, integration_time_ini=60, integration_time_end=480, offset_ini=60, offset_end=0):
+        """
+        Calculate purity analysis results.
 
-        if purity_data.empty:
-            raise ValueError("Purity data is empty.")
+        Args:
+            start_time: Start time of the run
+            end_time: End time of the run
+            integration_time_ini: Initial integration time in minutes (time before t0=0)
+            integration_time_end: Final integration time in minutes (time ending at offset_end before end)
+            offset_ini: Initial offset in minutes (not used in new logic)
+            offset_end: Final offset in minutes (time before end where final integration ends)
 
-        purity_data = purity_data.dropna()
-        if purity_data.empty:
-            raise ValueError("Purity data contains only NaN values.")
+        Returns:
+            Dictionary with analysis results
+        """
+        if not self.has_purity_data:
+            return None
 
-        # Fit exponential curve
-        time_seconds = (purity_data.index - purity_data.index[0]).total_seconds()
-        popt, pcov = curve_fit(
-            self.exp, time_seconds, purity_data.values,
-            p0=[purity_data.iloc[0], 8*3600, purity_data.iloc[-1]]
-        )
+        try:
+            # Get purity data
+            purity_data = self.standard_data.purity
+            timestamp = purity_data.index  # Use the data's own index
 
-        return {
-            'data': purity_data,
-            'fit_parameters': popt,
-            'fit_covariance': pcov,
-            'fit_errors': np.sqrt(np.diag(pcov))
-        }
+            # Calculate initial integration window: integration_time_ini minutes BEFORE t0=0 (start_time)
+            ini_start = start_time - pd.Timedelta(minutes=integration_time_ini)
+            ini_end = start_time  # t0=0 (run start)
+
+            # Calculate final integration window: integration_time_end minutes ENDING at offset_end minutes BEFORE end_time
+            end_end = end_time - pd.Timedelta(minutes=offset_end)  # offset_end minutes before end
+            end_start = end_end - pd.Timedelta(minutes=integration_time_end)  # integration_time_end minutes before that
+
+            # Get data for initial calculation (before run starts)
+            pre_run_mask = (timestamp >= ini_start) & (timestamp <= ini_end)
+            pre_run_data = purity_data[pre_run_mask]
+
+            # Get data for final calculation (ending before run ends)
+            end_mask = (timestamp >= end_start) & (timestamp <= end_end)
+            end_data = purity_data[end_mask]
+
+            # Calculate initial values from pre-run data
+            if len(pre_run_data) > 0:
+                purity_ini = pre_run_data.mean()
+                purity_ini_err = pre_run_data.std()
+            else:
+                # Fallback: use first few points if pre-run data is insufficient
+                fallback_data = purity_data.head(min(10, len(purity_data)))
+                purity_ini = fallback_data.mean()
+                purity_ini_err = fallback_data.std()
+
+            # Calculate final values from end data
+            if len(end_data) > 0:
+                purity_end = end_data.mean()
+                purity_end_err = end_data.std()
+            else:
+                # Fallback: use last few points if end data is insufficient
+                fallback_data = purity_data.tail(min(10, len(purity_data)))
+                purity_end = fallback_data.mean()
+                purity_end_err = fallback_data.std()
+
+            # Get run data (from start to end)
+            run_mask = (timestamp >= start_time) & (timestamp <= end_time)
+            run_data = purity_data[run_mask]
+            run_timestamp = timestamp[run_mask]
+
+            return {
+                'purity_ini': purity_ini,
+                'purity_ini_err': purity_ini_err,
+                'purity_end': purity_end,
+                'purity_end_err': purity_end_err,
+                'full_data': purity_data,  # All data including pre-run
+                'full_timestamp': timestamp,  # All timestamps including pre-run
+                'run_data': run_data,  # Data during the run
+                'run_timestamp': run_timestamp,  # Timestamps during the run
+                'ini_window': (ini_start, ini_end),  # Initial integration window
+                'end_window': (end_start, end_end)   # Final integration window
+            }
+
+        except Exception as e:
+            print(f"Error calculating purity: {e}")
+            return None
 
     def plot_purity(self, start_time: pd.Timestamp, end_time: pd.Timestamp,
                     purity_data: Dict[str, Any], ax: Optional[plt.Axes] = None,
                     color: Optional[str] = None, fit_legend: bool = False, dataset_name: str = None) -> plt.Axes:
-        """Plot purity over time with optional fit curve."""
+        """Plot purity over time with integration windows."""
         if ax is None:
             fig, ax = plt.subplots()
-
-        data = purity_data['data']
-        popt = purity_data['fit_parameters']
-        pcov = purity_data['fit_covariance']
 
         # Use dataset name in legend
         label = f'{dataset_name}' if dataset_name else 'Purity'
 
-        # Plot data
-        ax.plot((data.index - start_time).total_seconds(), data, "-o",
-                label=label, markersize=5.0, color=color)
+        # Get the full data and timestamps
+        if 'full_data' in purity_data and 'full_timestamp' in purity_data:
+            data = purity_data['full_data']
+            timestamp = purity_data['full_timestamp']
+        else:
+            # Fallback to old structure if available
+            if 'data' in purity_data:
+                data = purity_data['data']
+                timestamp = data.index
+            else:
+                print("Warning: No purity data available for plotting")
+                return ax
 
-        # Plot fit if requested
-        if fit_legend:
-            time_seconds = (data.index - data.index[0]).total_seconds()
+        # Plot the full data including pre-run
+        time_seconds = (timestamp - start_time).total_seconds()
+        ax.plot(time_seconds, data, "-o", label=label, markersize=5.0, color=color)
+
+        # Plot fit if requested and available
+        if fit_legend and 'fit_parameters' in purity_data and 'fit_covariance' in purity_data:
+            popt = purity_data['fit_parameters']
+            pcov = purity_data['fit_covariance']
+
+            time_seconds = (timestamp - timestamp[0]).total_seconds()
             fit_curve = self.exp(time_seconds, *popt)
             fit_label = f'{dataset_name} Fit: A={1e3*popt[0]:.2f}±{1e3*np.sqrt(pcov[0,0]):.2f} ms, τ={(1/3600)*popt[1]:.2f}±{(1/3600)*np.sqrt(pcov[1,1]):.2f} h, C={1e3*popt[2]:.2f}±{1e3*np.sqrt(pcov[2,2]):.2f} ms' if dataset_name else f'Fit: A={1e3*popt[0]:.2f}±{1e3*np.sqrt(pcov[0,0]):.2f} ms, τ={(1/3600)*popt[1]:.2f}±{(1/3600)*np.sqrt(pcov[1,1]):.2f} h, C={1e3*popt[2]:.2f}±{1e3*np.sqrt(pcov[2,2]):.2f} ms'
-            ax.plot((data.index - start_time).total_seconds(), fit_curve,
+            ax.plot(time_seconds, fit_curve,
                     label=fit_label, linestyle='--', color=color)
-            ax.set_title(r'$e^-$ lifetime Over Time - Fit: $Ae^{\frac{x}{\tau}} + C$')
-        else:
-            ax.set_title(r'$e^-$ lifetime Over Time')
 
+        ax.set_title(r'$e^-$ lifetime Over Time')
         ax.set_xlabel('Time since start [s]')
         ax.set_ylabel(r'$e^-$ lifetime [s]')
         ax.legend()
@@ -479,23 +695,18 @@ class PurityProcessor(BaseDataProcessor):
 
 class Dataset:
     """
-    A class to handle datasets stored in Excel files, providing methods to load, describe, and visualize the data.
+    A class to handle datasets using the new data format abstraction layer.
 
-    This class has been restructured to use specialized processors for different data types,
-    making it more modular and maintainable.
+    This class now works with StandardDataFormat instead of hardcoded column names,
+    making it format-independent and more flexible.
     """
 
     def __init__(self, path: str, name: Optional[str] = None):
         self.path = path
-        self.name = name or DataValidator.validate_file_path(path)
-        self.sheet_names = self._get_sheet_names()
+        self.name = name
 
-        # Data storage
-        self.configuration: Optional[pd.DataFrame] = None
-        self.info: Optional[pd.DataFrame] = None
-        self.data: Optional[pd.DataFrame] = None
-        self.datetime_mapping: Dict[str, str] = {}
-        self.unique_datetime: bool = False
+        # Data storage using standard format
+        self.standard_data: Optional[StandardDataFormat] = None
 
         # Processors
         self.liquid_level: Optional[LiquidLevelProcessor] = None
@@ -506,46 +717,36 @@ class Dataset:
         # Analysis results
         self._analysis_results: Dict[str, Any] = {}
 
-    def _get_sheet_names(self) -> list:
-        """Get the names of the sheets in the Excel file."""
+    def load(self, format_manager=None) -> 'Dataset':
+        """Load the dataset from the specified path using the format manager."""
         try:
-            return pd.ExcelFile(self.path).sheet_names
-        except Exception as e:
-            raise ValueError(f"Error reading Excel file: {e}")
+            if format_manager is None:
+                from .dataFormats import DataFormatManager
+                format_manager = DataFormatManager()
 
-    def load(self) -> 'Dataset':
-        """Load the dataset from the specified path."""
-        try:
-            for sheet_name in self.sheet_names:
-                if "Info" in sheet_name:
-                    self.configuration = pd.read_excel(self.path, sheet_name=sheet_name)
-                elif "Signal" in sheet_name:
-                    self.info = pd.read_excel(self.path, sheet_name=sheet_name, header=0)
-                elif "Grid" in sheet_name or "Data" in sheet_name:
-                    self.data = pd.read_excel(self.path, sheet_name=sheet_name, header=0)
+            # Convert to standard format
+            self.standard_data = format_manager.convert_file(self.path)
+            self.name = self.standard_data.dataset_name
 
-            # Initialize processors after loading data and assigning datetime
-            if self.data is not None:
-                self.assign_datetime()
-                self._initialize_processors()
+            # Initialize processors
+            self._initialize_processors()
 
         except Exception as e:
             print(f"Error loading dataset: {e}")
-            self.data = None
-            self.configuration = None
-            self.info = None
+            self.standard_data = None
 
         return self
 
     def _initialize_processors(self):
         """Initialize data processors after data is loaded."""
-        if self.data is not None and not self.data.empty and hasattr(self, 'datetime_mapping'):
+        if self.standard_data is not None:
             try:
-                self.liquid_level = LiquidLevelProcessor(self.data, self.datetime_mapping)
-                self.h2o_concentration = H2OConcentrationProcessor(self.data, self.datetime_mapping)
-                self.temperature = TemperatureProcessor(self.data, self.datetime_mapping)
-                self.purity = PurityProcessor(self.data, self.datetime_mapping)
+                self.liquid_level = LiquidLevelProcessor(self.standard_data)
+                self.h2o_concentration = H2OConcentrationProcessor(self.standard_data)
+                self.temperature = TemperatureProcessor(self.standard_data)
+                self.purity = PurityProcessor(self.standard_data)
             except Exception as e:
+                print(f"Warning: Error initializing processors: {e}")
                 self.liquid_level = None
                 self.h2o_concentration = None
                 self.temperature = None
@@ -557,110 +758,82 @@ class Dataset:
             self.temperature = None
             self.purity = None
 
-    def assign_datetime(self) -> 'Dataset':
-        """Assign datetime mapping for data columns."""
-        self.datetime_mapping = {}
-
-        for index, name in enumerate(self.data.columns):
-            if "Date-Time" in name:
-                if index + 1 < len(self.data.columns):
-                    self.datetime_mapping[self.data.columns[index + 1]] = name
-                self.data[name] = pd.to_datetime(self.data[name], errors='coerce')
-
-        if len(self.datetime_mapping) == 1:
-            for name in self.data.columns:
-                if "Date-Time" not in name:
-                    self.datetime_mapping[name] = "Date-Time"
-            self.unique_datetime = True
-        elif len(self.datetime_mapping) > 1:
-            self.unique_datetime = False
-        else:
-            self.unique_datetime = False
-
-        return self
-
     def describe(self) -> None:
         """Print a description of the dataset."""
-        if self.info is not None:
-            print(self.info)
+        if self.standard_data is not None:
+            print(f"Dataset: {self.name}")
+            print(f"Source: {self.standard_data.source_file}")
+            print(f"Data points: {len(self.standard_data.timestamp)}")
+            print(f"Time range: {self.standard_data.timestamp.min()} to {self.standard_data.timestamp.max()}")
+
+            # Show available data types
+            available_data = []
+            if self.standard_data.liquid_level is not None:
+                available_data.append("Liquid Level")
+            if self.standard_data.h2o_concentration is not None:
+                available_data.append("H2O Concentration")
+            if self.standard_data.temperature is not None:
+                available_data.append("Temperature")
+            if self.standard_data.purity is not None:
+                available_data.append("Purity")
+
+            print(f"Available data types: {', '.join(available_data)}")
         else:
-            print("No info available. Please load the dataset first.")
+            print("No data available. Please load the dataset first.")
 
     def show(self) -> None:
         """Plot the data in the dataset."""
-        if self.data is None or self.data.empty:
+        if self.standard_data is None:
             print("No data to show. Please load the dataset first.")
             return
 
-        if self.info is None or self.info.empty:
-            print("No info to show. Please load the dataset first.")
+        # Create subplots for available data
+        available_plots = []
+        if self.standard_data.liquid_level is not None:
+            available_plots.append("Liquid Level")
+        if self.standard_data.h2o_concentration is not None:
+            available_plots.append("H2O Concentration")
+        if self.standard_data.temperature is not None:
+            available_plots.append("Temperature")
+        if self.standard_data.purity is not None:
+            available_plots.append("Purity")
+
+        if not available_plots:
+            print("No data available to plot.")
             return
 
-        fig, axes = plt.subplots(3, 2, figsize=(12, 8), sharex=True)
+        n_plots = len(available_plots)
+        fig, axes = plt.subplots(n_plots, 1, figsize=(12, 4*n_plots), sharex=True)
+        if n_plots == 1:
+            axes = [axes]
+
         fig.suptitle(f"{self.name} Dataset", fontsize=16, fontweight='bold')
-        axes = axes.flatten()
 
-        cnt = 0
-        for signal in self.data.columns:
-            if "Date-Time" in signal or cnt >= 6:
-                continue
+        start_time = self.standard_data.timestamp.min()
+        end_time = self.standard_data.timestamp.max()
 
-            dt_col = self.datetime_mapping.get(signal, "Date-Time")
-            axes[cnt].plot(self.data[dt_col], self.data[signal], "o")
-            axes[cnt].tick_params(axis='x', rotation=45)
+        for i, plot_type in enumerate(available_plots):
+            ax = axes[i]
 
-            # Set labels based on signal type
-            if "PRM" in signal:
-                axes[cnt].set_title(r"$e^-$-lifetime")
-                axes[cnt].set_ylabel(r"$e^-$-lifetime [s]")
-            elif "AE" in signal:
-                axes[cnt].set_title(r"$H_2$O Concentration")
-                axes[cnt].set_ylabel(r"$H_2$O Concentration [ppb]")
-            elif "TE" in signal:
-                axes[cnt].set_title("Temperature")
-                axes[cnt].set_ylabel("Temperature [K]")
-            elif "LT" in signal:
-                axes[cnt].set_title("Liquid Level")
-                axes[cnt].set_ylabel("Liquid Level [in]")
-            elif "PRESSURE" in signal:
-                axes[cnt].set_title("Pressure")
-                axes[cnt].set_ylabel("Pressure [PSIG]")
+            if plot_type == "Liquid Level" and self.liquid_level:
+                self.liquid_level.plot_level(start_time, end_time, ax=ax, dataset_name=self.name)
+            elif plot_type == "H2O Concentration" and self.h2o_concentration:
+                h2o_data = self.h2o_concentration.calculate_h2o_concentration(start_time, end_time)
+                self.h2o_concentration.plot_concentration(start_time, end_time, h2o_data, ax=ax, dataset_name=self.name)
+            elif plot_type == "Temperature" and self.temperature:
+                temp_data = self.temperature.calculate_temperature(start_time, end_time)
+                self.temperature.plot_temperature(start_time, end_time, temp_data, ax=ax, dataset_name=self.name)
+            elif plot_type == "Purity" and self.purity:
+                purity_data = self.purity.calculate_purity(start_time, end_time)
+                self.purity.plot_purity(start_time, end_time, purity_data, ax=ax, dataset_name=self.name)
 
-            if cnt > 1:
-                axes[cnt].set_xlabel("Datetime")
-            axes[cnt].grid()
-            cnt += 1
-
-        fig.tight_layout()
+        plt.tight_layout()
         plt.show()
 
-    # Legacy method names for backward compatibility
-    def findTimes(self, **kwargs):
-        """Legacy method - use liquid_level.find_times() instead."""
-        if self.liquid_level is None:
-            raise ValueError("Data not loaded. Please load the dataset first.")
-        return self.liquid_level.find_times(**kwargs)
+    def get_analysis_results(self) -> Dict[str, Any]:
+        """Get analysis results for this dataset."""
+        return self._analysis_results.copy()
 
-    def level(self, **kwargs):
-        """Legacy method - use liquid_level.plot_level() instead."""
-        if self.liquid_level is None:
-            raise ValueError("Data not loaded. Please load the dataset first.")
-        return self.liquid_level.plot_level(**kwargs)
-
-    def h2oConcentration(self, **kwargs):
-        """Legacy method - use h2o_concentration methods instead."""
-        if self.h2o_concentration is None:
-            raise ValueError("Data not loaded. Please load the dataset first.")
-        return self.h2o_concentration.calculate_concentration(**kwargs)
-
-    def temperature(self, **kwargs):
-        """Legacy method - use temperature methods instead."""
-        if self.temperature is None:
-            raise ValueError("Data not loaded. Please load the dataset first.")
-        return self.temperature.calculate_temperature(**kwargs)
-
-    def purity(self, **kwargs):
-        """Legacy method - use purity methods instead."""
-        if self.purity is None:
-            raise ValueError("Data not loaded. Please load the dataset first.")
-        return self.purity.calculate_purity(**kwargs)
+    def set_analysis_results(self, analysis_type: str, results: Dict[str, Any]):
+        """Set analysis results for this dataset."""
+        self._analysis_results[analysis_type] = results

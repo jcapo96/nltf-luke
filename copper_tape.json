@@ -8,8 +8,9 @@
         "Email": "fblaszcz@fnal.gov"
     },
     "Data": {
-        "Path": "test_data",
-        "Name": "copper_tape"
+        "Path": "/Users/jcapo/cernbox/NLTFdata/COPPER_TAPE",
+        "Name": "copper_tape",
+        "Converter": "SeeqNewConverter"
     },
     "Date of Receipt": "05/17/2025",
     "Sample": {
@@ -30,9 +31,9 @@
     "Parameters": {
         "H2O": {
             "manual": false,
-            "integration_time_ini": 1,
-            "integration_time_end": 8,
-            "offset_ini": 1,
+            "integration_time_ini": 60,
+            "integration_time_end": 480,
+            "offset_ini": 60,
             "offset_end": 0
         }
     }
