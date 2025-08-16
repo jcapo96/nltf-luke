@@ -1,0 +1,160 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{bookmark}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{cleveref}
+\usepackage{makecell}
+\usepackage{lipsum} % For placeholder text
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{sectsty}
+\sectionfont{\large}
+\subsectionfont{\normalsize}
+\fancypagestyle{firstpage}{
+    \fancyhf{}
+    \fancyhead[L]{
+        \includegraphics[height=0.75cm]{fermilab_logo.png}
+    }
+    \fancyhead[C]{}
+    \fancyhead[R]{
+        Author: Jordi Capó (\href{mailto:jordi.capo@ific.uv.es}jordi.capo@ific.uv.es)\\
+        Approved by: Flor de Maria Blaszczyk (\href{mailto:fblaszcz@fnal.gov}fblaszcz@fnal.gov)
+    }
+}
+\thispagestyle{firstpage}
+
+\begin{document}
+
+\begin{center}
+    \LARGE \textbf{ Copper Foil Tape } \\
+    \large Date of Receipt: 05/17/2025
+\end{center}
+
+\begin{center}
+    \large Material Tests Stand: \textbf{Luke} - \textit{Noble Liquid Test Facility (NLTF), FNAL} \\
+    \small Contamination, outgassing and cryogenic compatibility studies for Argon detectors.
+\end{center}
+
+% \vspace{1cm}
+
+\begin{table}[H]
+    \centering
+    \caption*{\textbf{Sample Information}}
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{|l|p{0.75\textwidth}|}
+        \hline
+        \textbf{Name} & Copper Foil Tape \\ \hline
+        \textbf{Composition} & 3M 1181 Copper Foil tape with conductive adhesive \\ \hline
+        \textbf{Pictures} & \hyperref[sec:pictures]{Sample Pictures~\ref{sec:pictures}} \\ \hline
+        \textbf{Dimensions} & 11 equal stripes of 20 cm by 3 cm each: 660 cm² \\ \hline
+        \textbf{Source} & Philippe Rosier (IJCLab) \\ \hline
+        \textbf{Preparation} & Sectioned into 11 uniform pieces (20 by 3 cm), folded and glued onto themselves onto a stainless steel wire to form single strips (10 by 3 cm), and cleaned with 200-proof ethanol. \\ \hline
+    \end{tabular}
+    }
+\end{table}
+
+Three consecutive runs were performed: baseline (no sample), ullage (sample in gas phase), and liquid (sample submerged in liquid argon). Each run began when the filter was deactivated after reaching a plateau in electron lifetime and H\textsubscript{2}O concentration. Runs last typically 24hrs, making sure a plateau in the water outgassing is observed. Details are summarized in Table~\ref{tab:measurement_summary}.
+
+\begin{table}[H]
+    \centering
+    \caption*{\textbf{Measurement Summary}}
+    \renewcommand\arraystretch{1.5} % Increase row height
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{|l|c|c|c|c|c|c|}
+        \hline
+        \makecell{\rule{0pt}{2.5ex}\textbf{Run}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Start Date}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{End Date}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Initial H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Final H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{$\Delta$ H\textsubscript{2}O} \\ \textbf{[ppb]}} &
+        \makecell{\rule{0pt}{2.5ex}\textbf{Temp.} \\ \textbf{[K]}} \\
+        \hline
+        Baseline & 06/13/25 10:07 & 06/14/25 05:45 & 5.98 $\pm$ 0.09 & 10.7 $\pm$ 0.2 & 4.7 $\pm$ 0.2 & -- \\
+        \hline
+        Ullage & 06/18/25 10:18 & 06/19/25 08:19 & 4.17 $\pm$ 0.07 & 11.5 $\pm$ 0.3 & 7.3 $\pm$ 0.3 & 195.0 $\pm$ 0.4\\
+        \hline
+        Liquid & 06/23/25 08:55 & 06/24/25 08:30 & 4.44 $\pm$ 0.08 & 13.7 $\pm$ 0.4 & 9.3 $\pm$ 0.4 & 95.1 $\pm$ 0.1\\
+        \hline
+    \end{tabular}
+    }
+    \renewcommand\arraystretch{1} % Reset row height
+    \vspace{0.3cm}
+    \centering
+    \caption{Summary of measurement results for each run. Systematic uncertainties are not included.}
+    \vspace{0.1cm}
+    \label{tab:measurement_summary}
+\end{table}
+
+\vspace{-1cm}
+
+\section*{Conclusions on the Analysis}
+No significant water outgassing observed. The analysis on the electron lifetime shows the addition of the sample didn't have an impact on it. The observed decay overtime is due to the recirculating filter being off and the expected outgassing from the cryostat components themselves. Simple visual inspection before and after the test showed there was no evidence of physical damage such as tears, deformation, or discoloration.
+
+\section*{Summary of Plots}
+
+All plots show the data taken after the filter is turned off. The initial water concentration is averaged over 60 minutes before the filter is turned off; the final water concentration is averaged over 480 hours once the plateau is reached.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ purity.png }
+    \centering
+    \caption{Electron lifetime decay over time for the baseline, ullage and liquid tests respectively. Filter is turned-off at $t=0 s$.}
+    \label{fig:purity}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ h2o_concentration.png }
+    \centering
+    \caption{H\textsubscript{2}O Concentration evolution for the baseline, ullage and liquid runs. Filter is turned-off at $t=0 s$.}
+    \label{fig:h2o}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ temperature.png }
+    \centering
+    \caption{Temperature evolution for the ullage and liquid runs, once the filter is turned off. The temperature is measured on the platform holding the sample.}
+    \label{fig:temperature}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ level.png }
+    \centering
+    \caption{Liquid argon level in the cryostat for each run. Filter is turned-off at $t=0 s$. The level drops over time because some gas is lost to measure the water level to the gas analyzer.}
+    \label{fig:level}
+\end{figure}
+
+\section*{Sample Pictures}
+\label{sec:pictures}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.4\textheight,keepaspectratio]{ /Users/jcapo/cernbox/NLTFdata/COPPER_TAPE/IMAGES/copper_tape_before_A.jpeg }
+        \centering
+        \caption{Sample before tests.}
+        \label{fig:sample_before}
+    \end{minipage}
+
+    \vspace{0.02\textheight}
+
+    \begin{minipage}{\textwidth}
+        \centering
+        \includegraphics[width=\textwidth,height=0.4\textheight,keepaspectratio]{ /Users/jcapo/cernbox/NLTFdata/COPPER_TAPE/IMAGES/copper_tape_after_A.jpeg }
+        \centering
+        \caption{Sample after tests.}
+        \label{fig:sample_after}
+    \end{minipage}
+\end{figure}
+
+\end{document}

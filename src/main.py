@@ -1,88 +1,139 @@
-import json
-from jinja2 import Template
-import subprocess
+#!/usr/bin/env python3
+"""
+Main script for generating LaTeX reports from NLTF-LUKE data analysis.
+"""
+
 import sys
 import os
+import json
+import numpy as np
+from datetime import datetime
+from jinja2 import Template
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
-# Add the src directory to the path so we can import our modules
+# Add src to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from analysisClasses import Analysis, DatasetManager
-from datetime import datetime
-import numpy as np
-import matplotlib.pyplot as plt
+from dataFormats import DataFormatManager
+
 plt.style.use("style.mplstyle")
 
+# Check if a JSON file was provided
 if len(sys.argv) != 2:
-    print(f"Usage: python {os.path.basename(__file__)} <input.json>")
+    print("Usage: python3 src/main.py <json_file>")
     sys.exit(1)
 
 json_file = sys.argv[1]
-with open(json_file) as f:
-    data = json.load(f)
 
-# Create simplified variables
-sample = data["Sample"]
-results = data["Results"]
-images = data["Images"]
-parameters = data["Parameters"]
-h2o_parameters = parameters["H2O"]
+# Load the JSON configuration
+try:
+    with open(json_file, 'r') as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print(f"Error: Configuration file '{json_file}' not found.")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print(f"Error: Invalid JSON in '{json_file}'.")
+    sys.exit(1)
 
-if "signal" in h2o_parameters:
-    if h2o_parameters["signal"] == "NEW":
-        signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
-    elif h2o_parameters["signal"] == "OLD":
-        signal_name = "PAB_S1_AE_600_AR_REAL_F_CV_OLD"
-    else:
-        signal_name = h2o_parameters["signal"]
-elif "signal" not in h2o_parameters:
-    signal_name = "PAB_S1_AE_611_AR_REAL_F_CV"
-
-# Create dataset paths dictionary for the new DatasetManager
+# Extract dataset paths
 data_path = data["Data"]["Path"]
 data_name = data["Data"]["Name"]
+
 dataset_paths = {
     'baseline': f"{data_path}/{data_name}_baseline.xlsx",
     'ullage': f"{data_path}/{data_name}_ullage.xlsx",
     'liquid': f"{data_path}/{data_name}_liquid.xlsx"
 }
 
-# Initialize the new DatasetManager
+print(f"📁 Data path: {data_path}")
+print(f"📊 Dataset name: {data_name}")
+print(f"🔗 Dataset paths:")
+for dataset_type, path in dataset_paths.items():
+    print(f"   {dataset_type}: {path}")
+
+# Create simplified variables for template
+sample = data["Sample"]
+results = data["Results"]
+images = data["Images"]
+
+# Initialize the DatasetManager
 dataset_manager = DatasetManager(dataset_paths, data_name, json_file)
 
 # Create analysis object using the new structure
 analysis = Analysis(dataset_manager)
 
+print("🚀 Starting NLTF-LUKE Report Generation")
+print("=" * 50)
+
+# Extract H2O parameters for integration windows
+h2o_parameters = data["Parameters"]["H2O"]
+
+# Create figure and axes for plots
+print("📊 Setting up analysis plots...")
 fig1, ax1 = plt.subplots(figsize=(10, 6))
 fig2, ax2 = plt.subplots(figsize=(10, 6))
 fig3, ax3 = plt.subplots(figsize=(10, 6))
 fig4, ax4 = plt.subplots(figsize=(10, 6))
 
-# Run analyses and get results
-purity = analysis.purity(show=False, ax=ax1, manual=False,
-    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
-    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+# Run analyses and get results with progress tracking
+print("🔬 Running data analysis...")
+with tqdm(total=4, desc="Analysis Progress", unit="analysis") as pbar:
+    # Purity analysis
+    pbar.set_description("Running Purity Analysis")
+    purity = analysis.purity(show=False, ax=ax1, manual=False,
+        integration_time_ini=h2o_parameters["integration_time_ini"],
+        integration_time_end=h2o_parameters["integration_time_end"],
+        offset_ini=h2o_parameters["offset_ini"],
+        offset_end=h2o_parameters["offset_end"])
+    pbar.update(1)
 
-h2o_concentration = analysis.h2oConcentration(show=False, ax=ax2, manual=h2o_parameters["manual"],
-    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
-    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+    # H2O concentration analysis
+    pbar.set_description("Running H2O Concentration Analysis")
+    h2o_concentration = analysis.h2oConcentration(show=False, ax=ax2, manual=h2o_parameters["manual"],
+        integration_time_ini=h2o_parameters["integration_time_ini"],
+        integration_time_end=h2o_parameters["integration_time_end"],
+        offset_ini=h2o_parameters["offset_ini"],
+        offset_end=h2o_parameters["offset_end"])
+    pbar.update(1)
 
-temperature = analysis.temperature(show=False, ax=ax3, manual=False,
-    integration_time_ini=h2o_parameters["integration_time_ini"], integration_time_end=h2o_parameters["integration_time_end"],
-    offset_ini=h2o_parameters["offset_ini"], offset_end=h2o_parameters["offset_end"])
+    # Temperature analysis
+    pbar.set_description("Running Temperature Analysis")
+    temperature = analysis.temperature(show=False, ax=ax3, manual=False,
+        integration_time_ini=h2o_parameters["integration_time_ini"],
+        integration_time_end=h2o_parameters["integration_time_end"],
+        offset_ini=h2o_parameters["offset_ini"],
+        offset_end=h2o_parameters["offset_end"])
+    pbar.update(1)
 
-level = analysis.level(ax=ax4, manual=False)
+    # Level analysis
+    pbar.set_description("Running Liquid Level Analysis")
+    level = analysis.level(ax=ax4, manual=False)
+    pbar.update(1)
 
-# Save plots
-fig1.savefig("purity.png", dpi=300)
-fig2.savefig("h2o_concentration.png", dpi=300)
-fig3.savefig("temperature.png", dpi=300)
-fig4.savefig("level.png", dpi=300)
+print("💾 Saving analysis plots...")
+with tqdm(total=4, desc="Saving Plots", unit="plot") as pbar:
+    # Save plots
+    fig1.savefig("purity.png", dpi=300)
+    pbar.update(1)
 
+    fig2.savefig("h2o_concentration.png", dpi=300)
+    pbar.update(1)
+
+    fig3.savefig("temperature.png", dpi=300)
+    pbar.update(1)
+
+    fig4.savefig("level.png", dpi=300)
+    pbar.update(1)
+
+print("📋 Preparing report data...")
 # Get analysis results for template rendering
 analysis_results = analysis.get_analysis_results()
 
 # Fill template
+print("📝 Loading LaTeX template...")
 with open("report_template.tex") as f:
     template = Template(f.read())
 
@@ -148,6 +199,7 @@ def extract_temp_data(temp_result):
         'final_error': 0
     }
 
+print("🔍 Extracting analysis data...")
 # Extract baseline data
 baseline_h2o = get_dataset_data(analysis_results, 'baseline', 'h2o_concentration')
 baseline_temp = get_dataset_data(analysis_results, 'baseline', 'temperature')
@@ -195,6 +247,7 @@ if not any([baseline_level, ullage_level, liquid_level]):
     ullage_level = {'start_time': 'N/A', 'end_time': 'N/A'}
     liquid_level = {'start_time': 'N/A', 'end_time': 'N/A'}
 
+print("📄 Rendering LaTeX template...")
 rendered = template.render(
     author={
         "name": data["Author"]["Name"],
@@ -240,10 +293,10 @@ rendered = template.render(
         "end_date": format_datetime(safe_get(liquid_level, 'end_time', 'N/A')),
         "initial_concentration": round(safe_get(liquid_h2o_data, 'initial', 0), 2),
         "final_concentration": round(safe_get(liquid_h2o_data, 'final', 0), 1),
-        "concentration_err": round(np.sqrt(safe_get(liquid_h2o_data, 'final_error', 0)**2 + safe_get(liquid_h2o_data, 'initial_error', 0)**2), 1),
         "concentration": round(safe_get(liquid_h2o_data, 'final', 0) - safe_get(liquid_h2o_data, 'initial', 0), 1),
         "initial_concentration_err": round(safe_get(liquid_h2o_data, 'initial_error', 0), 2),
         "final_concentration_err": round(safe_get(liquid_h2o_data, 'final_error', 0), 1),
+        "concentration_err": round(np.sqrt(safe_get(liquid_h2o_data, 'final_error', 0)**2 + safe_get(liquid_h2o_data, 'initial_error', 0)**2), 1),
         "temperature": round(safe_get(liquid_temp_data, 'final', 0), 1),
         "temperature_err": round(safe_get(liquid_temp_data, 'final_error', 0), 1)
     },
@@ -263,19 +316,44 @@ rendered = template.render(
         }
     },
     images={
-        "before": images["Before"].strip(),
-        "after": images["After"].strip(),
+        "before": images["Before"],
+        "after": images["After"]
     }
 )
 
-# Write to .tex file
+# Write the rendered template to a file
+print("💾 Writing LaTeX file...")
 with open("report.tex", "w") as f:
     f.write(rendered)
 
-# Compile PDF
-subprocess.run(["pdflatex", "report.tex"])
+# Compile the LaTeX file to PDF
+print("🔨 Compiling LaTeX to PDF...")
+try:
+    import subprocess
+    result = subprocess.run(["pdflatex", "-interaction=nonstopmode", "report.tex"],
+                          capture_output=True, text=True)
 
-print("✅ PDF report generated: report.pdf")
+    # Check if PDF was actually generated
+    if os.path.exists("report.pdf") and os.path.getsize("report.pdf") > 0:
+        print("✅ PDF report generated: report.pdf")
+    else:
+        print("❌ LaTeX compilation failed - no PDF generated!")
+        print("LaTeX Error Output:")
+        print(result.stderr)
+        sys.exit(1)
+
+except FileNotFoundError:
+    print("❌ Error: pdflatex not found. Please install LaTeX.")
+    print("On macOS: brew install --cask mactex")
+    print("On Ubuntu: sudo apt-get install texlive-full")
+    print("On Windows: Install MiKTeX from https://miktex.org/")
+    sys.exit(1)
+
+print("🎉 Report generation completed successfully!")
+print("📁 Files generated:")
+print("   - report.pdf (main report)")
+print("   - purity.png, h2o_concentration.png, temperature.png, level.png (plots)")
+print("   - report.tex (LaTeX source)")
 
 for fname in ["purity.png", "h2o_concentration.png", "temperature.png", "level.png"]:
     if os.path.exists(fname):
