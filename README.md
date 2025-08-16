@@ -1,96 +1,187 @@
-# NLTF-LUKE
+# NLTF-LUKE Data Analysis Framework
 
-## Setup Instructions
+A comprehensive data analysis framework for processing and analyzing liquid nitrogen test facility (NLTF) data with support for multiple data formats and automated report generation.
 
-Before proceeding, ensure that you have LaTeX installed on your system, as `pdflatex` is required for some features. You can install a LaTeX distribution such as TeX Live (Linux), MacTeX (macOS), or MiKTeX (Windows).
+## Overview
 
-### 1. Create a Virtual Environment
+This framework provides a modular, extensible system for:
+- Loading and converting data from various formats (Excel, CSV, JSON, etc.)
+- Processing different types of signals (liquid level, H₂O concentration, temperature, purity)
+- Analyzing data with configurable integration windows
+- Generating comprehensive LaTeX reports
+- Creating preliminary data analysis reports
 
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
-```
+## Quick Start
 
-### 2. Upgrade pip
-
-```bash
-pip install --upgrade pip
-```
-
-### 3. Install Required Packages
-
-If you have a `requirements.txt` file:
+### Prerequisites
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Or install packages individually:
+### Basic Usage
 
-```bash
-pip install <package_name>
+1. **Generate Main Report**:
+   ```bash
+   python3 src/main.py your_config.json
+   ```
+
+2. **Generate Preliminary Report**:
+   ```bash
+   python3 src/preliminary_report.py your_config.json
+   ```
+
+## Configuration
+
+The framework uses JSON configuration files that specify:
+- Data file paths
+- Integration parameters
+- Analysis preferences
+- Converter selection
+
+### Example Configuration Structure
+
+```json
+{
+  "Data": {
+    "Converter": "SeeqNewConverter",
+    "Baseline": "path/to/baseline.xlsx",
+    "Ullage": "path/to/ullage.xlsx",
+    "Liquid": "path/to/liquid.xlsx"
+  },
+  "Analysis": {
+    "integration_time_ini": 60,
+    "integration_time_end": 480,
+    "offset_ini": 60,
+    "offset_end": 0
+  }
+}
 ```
 
-## Usage
+## Key Features
 
-To generate a report, ensure you have a JSON file with the required entries (see the example file `copper_tape.json`). Then run:
+### Data Format Abstraction
+- **Standard Data Format**: All data is converted to a consistent internal format
+- **Multiple Converters**: Support for different input file formats
+- **Extensible**: Easy to add new data converters
 
-```bash
-python3 src/report_latex.py <file_name>.json
+### Analysis Capabilities
+- **Integration Windows**: Configurable initial and final measurement periods
+- **Multi-dataset Analysis**: Process baseline, ullage, and liquid datasets
+- **Statistical Analysis**: Calculate means, standard deviations, and trends
+
+### Report Generation
+- **LaTeX Reports**: Professional-quality PDF reports with tables and plots
+- **Preliminary Reports**: Raw data visualization and analysis summaries
+- **Customizable Templates**: Modify report structure and content
+
+## Architecture
+
+### Core Components
+
+1. **Data Classes** (`src/dataClasses.py`)
+   - Data processors for different signal types
+   - Integration window calculations
+   - Statistical analysis methods
+
+2. **Analysis Classes** (`src/analysisClasses.py`)
+   - Multi-dataset analysis coordination
+   - Plot generation and management
+   - Result aggregation
+
+3. **Data Formats** (`src/dataFormats.py`)
+   - Converter implementations
+   - Standard data format definition
+   - Format manager for converter selection
+
+4. **Main Script** (`src/main.py`)
+   - Report generation orchestration
+   - LaTeX template rendering
+   - Plot saving and management
+
+5. **Preliminary Report** (`src/preliminary_report.py`)
+   - Raw data visualization
+   - Integration window visualization
+   - Data quality assessment
+
+## File Structure
+
+```
+NLTF-LUKE/
+├── src/
+│   ├── main.py                 # Main report generation script
+│   ├── preliminary_report.py   # Preliminary data analysis
+│   ├── dataClasses.py          # Data processing classes
+│   ├── analysisClasses.py      # Analysis coordination
+│   ├── dataFormats.py          # Data format converters
+│   └── __init__.py
+├── test_data/                  # Sample data files
+├── copper_tape.json           # Example configuration
+├── requirements.txt            # Python dependencies
+└── README.md                  # This file
 ```
 
-Replace `<file_name>.json` with your JSON file.
+## Usage Examples
 
-This command will generate a PDF report called `report.pdf` containing the results of the analysis.
+### Generate Main Analysis Report
 
-## JSON File Fields Explained
+```bash
+# Basic usage
+python3 src/main.py copper_tape.json
 
-The JSON file used for report generation contains the following fields:
+# The script will:
+# 1. Load and convert data files
+# 2. Perform analysis with specified parameters
+# 3. Generate plots (purity.png, h2o_concentration.png, etc.)
+# 4. Create LaTeX report (report.pdf)
+```
 
-- **Author**: Information about the person preparing the report.
-    - `Name`: Full name of the author.
-    - `Email`: Author's email address.
+### Generate Preliminary Report
 
-- **Tester**: Details of the individual who performed the test.
-    - `Name`: Full name of the tester.
-    - `Email`: Tester's email address.
+```bash
+# Create preliminary analysis
+python3 src/preliminary_report.py copper_tape.json
 
-- **Data**: Information about the data source.
-    - `Path`: Directory or location of the data files.
-    - `Name`: Name identifier for the dataset.
+# This generates:
+# - Individual dataset plots
+# - Combined signal plots
+# - Summary report with integration windows
+# - All plots saved to preliminary_plots/ directory
+```
 
-- **Date of Receipt**: The date when the sample was received (format: MM/DD/YYYY).
+## Integration Parameters
 
-- **Sample**: Description and details of the sample tested.
-    - `Sample Name`: Name or identifier of the sample.
-    - `Composition`: Material composition or description.
-    - `Picture Location`: URL or path to images or folders containing sample pictures.
-    - `Dimensions`: Physical dimensions and quantity of the sample.
-    - `Source`: Origin or provider of the sample.
-    - `Preparation`: Steps taken to prepare the sample for testing.
+The framework uses a sophisticated integration window system:
 
-- **Results**: Summary of the test results and observations.
+- **Initial Integration**: `integration_time_ini` minutes **before** t0=0 (run start)
+- **Final Integration**: `integration_time_end` minutes **ending** at `offset_end` minutes **before** the end time
 
-- **Images**: Paths to images taken before and after testing.
-    - `Before`: File path to the "before" image.
-    - `After`: File path to the "after" image.
+This allows for:
+- Pre-run baseline measurements
+- End-of-run final measurements
+- Configurable measurement periods
+- Consistent analysis across datasets
 
-- **Parameters**: Measurement or analysis parameters.
-    - `H2O`: Parameters related to water measurement.
-        - `manual`: Boolean indicating if manual integration is wished to be used.
-        - `integration_time_ini`: Initial integration time. The amount of time used for the calculation of the "initial" quantities.
-        - `integration_time_end`: Final integration time. The amount of time used for the calculation of the "final" quantities.
-        - `offset_ini`: Initial offset value. The offset time, since the first value, the quantities are calculated.
-        - `offset_end`: Final offset value. The offset time, since the latest value, the quantities are calculated.
+## Troubleshooting
 
-Each field provides essential information for generating a comprehensive report.
+### Common Issues
 
-## Work in Progress / To-Do
+1. **Missing Plot Files**: Ensure all required data is available and converters are working
+2. **LaTeX Compilation Errors**: Check that all plot files exist before LaTeX compilation
+3. **Data Loading Issues**: Verify file paths and converter compatibility
 
-- **Data Format Wrapper**: Developing a wrapper to support importing data from various formats, converting them into the base JSON format required by the software. This will allow users to focus on creating format-specific converters, enhancing flexibility and generalization.
+### Debug Mode
 
-- **Preliminary Report Generation**: Implementing functionality to generate a preliminary report from the imported data. This report will help in extracting conclusions and identifying outliers, which can then be reviewed and incorporated into the final JSON file for comprehensive reporting.
+For troubleshooting, you can temporarily add print statements to the analysis methods in `src/dataClasses.py`.
 
-- **Outlier Detection**: Adding methods to detect and flag potential outliers in the data, ensuring that plots and statistical distributions are not biased by anomalous points.
+## Contributing
 
-- **Reference Materials**: Test results must be compared to reference materials, specifically stainless steel and G10. The report will include data from these reference materials, and key observables will be derived from these comparisons. Conclusions will be extracted based on how the sample's performance relates to the reference materials, providing context and supporting the interpretation of results.
+To add new functionality:
+1. Follow the existing class structure
+2. Implement required abstract methods
+3. Add appropriate error handling
+4. Update documentation
+
+## License
+
+This project is part of the DUNE-IFIC collaboration and follows Fermilab software guidelines.

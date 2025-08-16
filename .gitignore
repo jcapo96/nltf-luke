@@ -4,6 +4,7 @@
 *.pdf
 *.json
 *.ipynb
+preliminary_plots/
 ana/
 luke/
 MTS_NASA_BareAl/
