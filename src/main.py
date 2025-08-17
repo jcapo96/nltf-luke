@@ -6,6 +6,7 @@ Main script for generating LaTeX reports from NLTF-LUKE data analysis.
 import sys
 import os
 import json
+import warnings
 import numpy as np
 from datetime import datetime
 from jinja2 import Template
@@ -14,10 +15,14 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+# Suppress OpenPyXL warnings about default styles
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from analysisClasses import Analysis, DatasetManager
-from dataFormats import DataFormatManager
+from analysis import Analysis
+from dataset import DatasetManager
+from converters import DataFormatManager
 
 plt.style.use("style.mplstyle")
 
@@ -168,6 +173,10 @@ def extract_temp_data(temp_result):
     }
 
 print("Extracting analysis data...")
+print(f"Analysis results keys: {list(analysis_results.keys())}")
+for key, value in analysis_results.items():
+    print(f"  {key}: {list(value.keys()) if isinstance(value, dict) else type(value)}")
+
 baseline_h2o = get_dataset_data(analysis_results, 'baseline', 'h2o_concentration')
 baseline_temp = get_dataset_data(analysis_results, 'baseline', 'temperature')
 baseline_level = get_dataset_data(analysis_results, 'baseline', 'liquid_level')
@@ -271,9 +280,9 @@ rendered = template.render(
     parameters={
         "h2o_parameters": {
             "integration_time_ini": round(h2o_parameters["integration_time_ini"], 0),
-            "integration_time_end": h2o_parameters["integration_time_end"],
+            "integration_time_end": round(h2o_parameters["integration_time_end"]/60, 0),
             "offset_ini": round(h2o_parameters["offset_ini"], 0),
-            "offset_end": h2o_parameters["offset_end"]/60
+            "offset_end": round(h2o_parameters["offset_end"]/60, 0)
         }
     },
     images={
@@ -320,7 +329,3 @@ print("Files generated:")
 print("   - report.pdf (main report)")
 print("   - purity.png, h2o_concentration.png, temperature.png, level.png (plots)")
 print("   - report.tex (LaTeX source)")
-
-for fname in ["purity.png", "h2o_concentration.png", "temperature.png", "level.png"]:
-    if os.path.exists(fname):
-        os.remove(fname)
