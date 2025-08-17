@@ -10,6 +10,31 @@ Data converters are responsible for:
 3. **Handling** format-specific quirks and data structures
 4. **Providing** metadata about the dataset type
 
+## New Modular Structure
+
+The framework has been restructured into a modular architecture that makes it easier to add new converters:
+
+```
+src/
+├── core/                    # Core data structures
+│   ├── standard_format.py   # StandardDataFormat definition
+│   └── base_classes.py      # Abstract base classes
+├── converters/              # Data converters
+│   ├── base_converter.py    # BaseDataConverter abstract class
+│   ├── seeq_new_converter.py # Modern Seeq format converter
+│   ├── seeq_old_converter.py # Legacy Seeq format converter
+│   └── data_format_manager.py # Converter management
+├── processors/              # Signal processing
+├── analysis/                # Analysis engine
+└── dataset/                 # Dataset management
+```
+
+This structure provides:
+- **Clear separation of concerns**
+- **Easy extensibility** for new converters
+- **Consistent interfaces** across all components
+- **Simplified maintenance** and debugging
+
 ## Converter Architecture
 
 ### Base Class: `BaseDataConverter`
@@ -62,7 +87,8 @@ class StandardDataFormat:
 ### Step 1: Create Converter Class
 
 ```python
-from src.dataFormats import BaseDataConverter, StandardDataFormat
+from src.converters.base_converter import BaseDataConverter
+from src.core.standard_format import StandardDataFormat
 import pandas as pd
 from typing import Optional
 
@@ -230,18 +256,39 @@ class MyCustomConverter(BaseDataConverter):
 
 ### Step 2: Register the Converter
 
-Add your converter to the `DataFormatManager`:
+The framework automatically discovers converters in the `src/converters/` directory. To register your converter:
+
+1. **Place your converter file** in `src/converters/`
+2. **Update the `__init__.py`** file to include your converter:
 
 ```python
-# In src/dataFormats.py, add to the __init__ method:
+# In src/converters/__init__.py
+from .base_converter import BaseDataConverter
+from .seeq_new_converter import SeeqNewConverter
+from .seeq_old_converter import SeeqOldConverter
+from .my_custom_converter import MyCustomConverter  # Add this line
+from .data_format_manager import DataFormatManager
 
-def __init__(self):
-    self.converters = [
-        SeeqNewConverter(),
-        SeeqOldConverter(),
-        MyCustomConverter(),  # Add your converter here
-        # ... other converters
-    ]
+__all__ = [
+    'BaseDataConverter',
+    'SeeqNewConverter',
+    'SeeqOldConverter',
+    'MyCustomConverter',  # Add this line
+    'DataFormatManager'
+]
+```
+
+### Alternative: Manual Registration
+
+You can also register converters manually in your code:
+
+```python
+from src.converters.data_format_manager import DataFormatManager
+from src.converters.my_custom_converter import MyCustomConverter
+
+# Create and register converter
+manager = DataFormatManager()
+manager.register_converter(MyCustomConverter())
 ```
 
 ### Step 3: Test Your Converter
@@ -250,7 +297,7 @@ Create a test script to verify your converter works:
 
 ```python
 # test_my_converter.py
-from src.dataFormats import DataFormatManager
+from src.converters.data_format_manager import DataFormatManager
 
 def test_converter():
     format_manager = DataFormatManager()
@@ -278,6 +325,30 @@ if __name__ == "__main__":
     test_converter()
 ```
 
+## Benefits of the New Modular Structure
+
+The restructured framework provides several advantages for converter development:
+
+### **Easier Development**
+- **Clear separation**: Converters are isolated in their own module
+- **Focused responsibility**: Each converter handles only data conversion
+- **Consistent interfaces**: All converters follow the same base class pattern
+
+### **Better Testing**
+- **Independent testing**: Test converters without loading the entire framework
+- **Mock data**: Easier to create test fixtures
+- **Isolated failures**: Converter issues don't affect other components
+
+### **Simplified Maintenance**
+- **Single location**: All converters are in `src/converters/`
+- **Clear dependencies**: Import paths are explicit and logical
+- **Easy updates**: Modify converters without touching analysis code
+
+### **Enhanced Extensibility**
+- **Plug-and-play**: Add new converters by dropping files in the directory
+- **Automatic discovery**: Framework finds converters automatically
+- **No core changes**: Add converters without modifying framework internals
+
 ## Best Practices
 
 ### 1. Error Handling
@@ -300,6 +371,65 @@ if __name__ == "__main__":
 - Document expected file format
 - Provide examples of valid data
 - List any dependencies or requirements
+
+## Complete Workflow: Adding a New Converter
+
+Here's the complete step-by-step process for adding a new converter:
+
+### **Step 1: Create Your Converter File**
+```bash
+# Create the converter file
+touch src/converters/my_custom_converter.py
+```
+
+### **Step 2: Implement the Converter Class**
+```python
+# src/converters/my_custom_converter.py
+from .base_converter import BaseDataConverter
+from ..core.standard_format import StandardDataFormat
+import pandas as pd
+from typing import Optional
+
+class MyCustomConverter(BaseDataConverter):
+    """Converter for MyCustom data format."""
+
+    def __init__(self):
+        self.name = "MyCustomConverter"
+        self.supported_extensions = ['.myc', '.custom']
+
+    # ... implement required methods
+```
+
+### **Step 3: Update the Module Init File**
+```python
+# src/converters/__init__.py
+from .my_custom_converter import MyCustomConverter
+
+__all__ = [
+    'BaseDataConverter',
+    'SeeqNewConverter',
+    'SeeqOldConverter',
+    'MyCustomConverter',  # Add this line
+    'DataFormatManager'
+]
+```
+
+### **Step 4: Test Your Converter**
+```bash
+# Test from the project root
+python3 -c "from src.converters import MyCustomConverter; print('✅ Converter imported successfully!')"
+```
+
+### **Step 5: Use in Configuration**
+```json
+{
+  "Data": {
+    "Converter": "MyCustomConverter",
+    "Path": "/path/to/data",
+    "Name": "my_dataset"
+  }
+}
+```
 
 ## Example: CSV Converter
 

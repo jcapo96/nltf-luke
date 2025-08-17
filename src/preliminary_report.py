@@ -7,6 +7,7 @@ Generates raw data plots and summary for initial data inspection.
 import os
 import sys
 import json
+import warnings
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,9 +15,12 @@ from matplotlib.dates import DateFormatter
 from datetime import datetime, timedelta
 from tqdm import tqdm
 
+# Suppress OpenPyXL warnings about default styles
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from analysisClasses import DatasetManager
+from dataset import DatasetManager
 
 plt.style.use("style.mplstyle")
 

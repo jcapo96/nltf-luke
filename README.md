@@ -34,26 +34,31 @@ pip install -r requirements.txt
 ## Configuration
 
 The framework uses JSON configuration files that specify:
-- Data file paths
-- Integration parameters
-- Analysis preferences
-- Converter selection
+- Data file paths and converter selection
+- Integration parameters and analysis preferences
+- Sample information and metadata
+- Report generation settings
 
-### Example Configuration Structure
+### Configuration Guide
+
+For detailed information about JSON configuration files, see [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md).
+
+### Quick Configuration Example
 
 ```json
 {
   "Data": {
-    "Converter": "SeeqNewConverter",
-    "Baseline": "path/to/baseline.xlsx",
-    "Ullage": "path/to/ullage.xlsx",
-    "Liquid": "path/to/liquid.xlsx"
+    "Path": "/path/to/data/directory",
+    "Name": "dataset_prefix",
+    "Converter": "SeeqNewConverter"
   },
-  "Analysis": {
-    "integration_time_ini": 60,
-    "integration_time_end": 480,
-    "offset_ini": 60,
-    "offset_end": 0
+  "Parameters": {
+    "H2O": {
+      "integration_time_ini": 60,
+      "integration_time_end": 480,
+      "offset_ini": 60,
+      "offset_end": 0
+    }
   }
 }
 ```
@@ -77,47 +82,83 @@ The framework uses JSON configuration files that specify:
 
 ## Architecture
 
+The framework follows a **modular, extensible architecture** that separates concerns and makes it easy to add new functionality:
+
 ### Core Components
 
-1. **Data Classes** (`src/dataClasses.py`)
-   - Data processors for different signal types
-   - Integration window calculations
-   - Statistical analysis methods
+1. **Core Module** (`src/core/`)
+   - `standard_format.py`: Standard data format definition
+   - `base_classes.py`: Abstract base classes for processors and analysis
 
-2. **Analysis Classes** (`src/analysisClasses.py`)
-   - Multi-dataset analysis coordination
-   - Plot generation and management
-   - Result aggregation
+2. **Data Converters** (`src/converters/`)
+   - `base_converter.py`: Abstract base class for data converters
+   - `seeq_new_converter.py`: Converter for modern Seeq data format
+   - `seeq_old_converter.py`: Converter for legacy Seeq data format
+   - `data_format_manager.py`: Manages converter selection and registration
 
-3. **Data Formats** (`src/dataFormats.py`)
-   - Converter implementations
-   - Standard data format definition
-   - Format manager for converter selection
+3. **Signal Processors** (`src/processors/`)
+   - `liquid_level_processor.py`: Processes liquid level signals
+   - `h2o_processor.py`: Processes H₂O concentration signals
+   - `temperature_processor.py`: Processes temperature signals
+   - `purity_processor.py`: Processes purity/lifetime signals
 
-4. **Main Script** (`src/main.py`)
-   - Report generation orchestration
-   - LaTeX template rendering
-   - Plot saving and management
+4. **Analysis Engine** (`src/analysis/`)
+   - `base_analysis.py`: Abstract base class for analysis operations
+   - `purity_analysis.py`: Multi-dataset purity analysis
+   - `temperature_analysis.py`: Multi-dataset temperature analysis
+   - `h2o_analysis.py`: Multi-dataset H₂O concentration analysis
+   - `liquid_level_analysis.py`: Multi-dataset liquid level analysis
+   - `main_analysis.py`: Main analysis coordinator
 
-5. **Preliminary Report** (`src/preliminary_report.py`)
-   - Raw data visualization
-   - Integration window visualization
-   - Data quality assessment
+5. **Dataset Management** (`src/dataset/`)
+   - `dataset.py`: Individual dataset handling
+   - `dataset_manager.py`: Multi-dataset coordination
+
+6. **Utilities** (`src/utils/`)
+   - `data_validator.py`: Data validation utilities
+
+7. **Main Scripts**
+   - `src/main.py`: Main report generation
+   - `src/preliminary_report.py`: Preliminary data analysis
 
 ## File Structure
 
 ```
 NLTF-LUKE/
 ├── src/
+│   ├── core/                   # Core data structures and base classes
+│   │   ├── standard_format.py  # Standard data format definition
+│   │   └── base_classes.py     # Abstract base classes
+│   ├── converters/             # Data format converters
+│   │   ├── base_converter.py   # Abstract converter base class
+│   │   ├── seeq_new_converter.py # Modern Seeq format converter
+│   │   ├── seeq_old_converter.py # Legacy Seeq format converter
+│   │   └── data_format_manager.py # Converter management
+│   ├── processors/             # Signal processing classes
+│   │   ├── liquid_level_processor.py # Liquid level processing
+│   │   ├── h2o_processor.py   # H₂O concentration processing
+│   │   ├── temperature_processor.py # Temperature processing
+│   │   └── purity_processor.py # Purity/lifetime processing
+│   ├── analysis/               # Analysis engine
+│   │   ├── base_analysis.py   # Abstract analysis base class
+│   │   ├── purity_analysis.py # Purity analysis
+│   │   ├── temperature_analysis.py # Temperature analysis
+│   │   ├── h2o_analysis.py    # H₂O concentration analysis
+│   │   ├── liquid_level_analysis.py # Liquid level analysis
+│   │   └── main_analysis.py   # Main analysis coordinator
+│   ├── dataset/                # Dataset management
+│   │   ├── dataset.py         # Individual dataset handling
+│   │   └── dataset_manager.py # Multi-dataset coordination
+│   ├── utils/                  # Utility functions
+│   │   └── data_validator.py  # Data validation
 │   ├── main.py                 # Main report generation script
 │   ├── preliminary_report.py   # Preliminary data analysis
-│   ├── dataClasses.py          # Data processing classes
-│   ├── analysisClasses.py      # Analysis coordination
-│   ├── dataFormats.py          # Data format converters
 │   └── __init__.py
 ├── test_data/                  # Sample data files
 ├── copper_tape.json           # Example configuration
 ├── requirements.txt            # Python dependencies
+├── CONVERTER_IMPLEMENTATION.md # Guide for adding new converters
+├── CONFIGURATION_GUIDE.md      # JSON configuration reference
 └── README.md                  # This file
 ```
 
@@ -162,6 +203,30 @@ This allows for:
 - Configurable measurement periods
 - Consistent analysis across datasets
 
+## Extending the Framework
+
+The modular architecture makes it easy to extend the framework with new functionality:
+
+### Adding New Data Converters
+See [CONVERTER_IMPLEMENTATION.md](CONVERTER_IMPLEMENTATION.md) for detailed instructions on implementing new data converters.
+
+### Adding New Signal Processors
+1. Create a new processor class in `src/processors/`
+2. Inherit from `BaseDataProcessor`
+3. Implement required methods: `process()`, `_validate_data()`
+4. Add plotting methods as needed
+
+### Adding New Analysis Types
+1. Create a new analysis class in `src/analysis/`
+2. Inherit from `BaseAnalysis`
+3. Implement the `analyze()` method
+4. Register with the main analysis coordinator
+
+### Adding New Signal Types
+1. Extend `StandardDataFormat` in `src/core/standard_format.py`
+2. Create corresponding processor and analysis classes
+3. Update the dataset initialization
+
 ## Troubleshooting
 
 ### Common Issues
@@ -172,15 +237,17 @@ This allows for:
 
 ### Debug Mode
 
-For troubleshooting, you can temporarily add print statements to the analysis methods in `src/dataClasses.py`.
+For troubleshooting, you can temporarily add print statements to the analysis methods in the respective processor files.
 
 ## Contributing
 
 To add new functionality:
-1. Follow the existing class structure
-2. Implement required abstract methods
-3. Add appropriate error handling
-4. Update documentation
+1. Follow the existing modular structure in the appropriate directory
+2. Inherit from the correct abstract base classes
+3. Implement required abstract methods
+4. Add appropriate error handling and validation
+5. Update the relevant `__init__.py` files
+6. Update documentation and add examples
 
 ## License
 
