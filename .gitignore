@@ -4,6 +4,12 @@
 *.pdf
 *.json
 *.ipynb
+*.pyc
+h2o_concentration.png
+report.tex
+purity.png
+temperature.png
+level.png
 preliminary_plots/
 ana/
 luke/
