@@ -91,7 +91,7 @@ class LiquidLevelProcessor(BaseDataProcessor):
         The method detects:
         1. Start: When level drops from initial oscillation pattern to stable pattern
         2. End: When level rises again or returns to oscillation pattern
-        3. If detected duration < 12 hours, extend end time to 24 hours after start
+        3. If detected duration < 18 hours, extend end time to 24 hours after start
 
         Args:
             manual: If True, use manual start/end times from data
@@ -187,15 +187,13 @@ class LiquidLevelProcessor(BaseDataProcessor):
         # Calculate the detected duration
         detected_duration_hours = (end_time - start_time).total_seconds() / 3600
 
-        # If detected duration is shorter than 12 hours, extend to 24 hours
-        if detected_duration_hours < 12:
+        # If detected duration is shorter than 18 hours, extend to at least 24 hours
+        if detected_duration_hours < 18:
             target_end_time = start_time + pd.Timedelta(hours=24)
-            # But don't exceed the available data
-            if target_end_time <= full_end_time:
-                end_time = target_end_time
-                print(f"Warning: Detected duration ({detected_duration_hours:.1f}h) < 12h, extending to 24h")
-            else:
-                print(f"Warning: Detected duration ({detected_duration_hours:.1f}h) < 12h, but cannot extend to 24h (data limit)")
+            # Force extension to 24 hours even if it exceeds available data
+            end_time = target_end_time
+            print(f"Warning: Detected duration ({detected_duration_hours:.1f}h) < 18h, extending to 24h")
+            print(f"Note: Extended end time ({end_time}) may exceed available data boundaries")
 
         # Ensure we don't exceed data bounds
         if end_time > full_end_time:

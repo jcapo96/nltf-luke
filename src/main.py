@@ -9,6 +9,8 @@ import json
 import numpy as np
 from datetime import datetime
 from jinja2 import Template
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for PNG generation
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -43,9 +45,9 @@ data_path = data["Data"]["Path"]
 data_name = data["Data"]["Name"]
 
 dataset_paths = {
-    'baseline': f"{data_path}/{data_name}_baseline.xlsx",
-    'ullage': f"{data_path}/{data_name}_ullage.xlsx",
-    'liquid': f"{data_path}/{data_name}_liquid.xlsx"
+    'baseline': os.path.join(data_path, f"{data_name}_baseline.xlsx"),
+    'ullage': os.path.join(data_path, f"{data_name}_ullage.xlsx"),
+    'liquid': os.path.join(data_path, f"{data_name}_liquid.xlsx")
 }
 
 print(f"📁 Data path: {data_path}")
@@ -73,10 +75,10 @@ h2o_parameters = data["Parameters"]["H2O"]
 
 # Create figure and axes for plots
 print("📊 Setting up analysis plots...")
-fig1, ax1 = plt.subplots(figsize=(10, 6))
-fig2, ax2 = plt.subplots(figsize=(10, 6))
-fig3, ax3 = plt.subplots(figsize=(10, 6))
-fig4, ax4 = plt.subplots(figsize=(10, 6))
+fig1, ax1 = plt.subplots(figsize=(8, 5))
+fig2, ax2 = plt.subplots(figsize=(8, 5))
+fig3, ax3 = plt.subplots(figsize=(8, 5))
+fig4, ax4 = plt.subplots(figsize=(8, 5))
 
 # Run analyses and get results with progress tracking
 print("🔬 Running data analysis...")
@@ -116,16 +118,16 @@ with tqdm(total=4, desc="Analysis Progress", unit="analysis") as pbar:
 print("💾 Saving analysis plots...")
 with tqdm(total=4, desc="Saving Plots", unit="plot") as pbar:
     # Save plots
-    fig1.savefig("purity.png", dpi=300)
+    fig1.savefig("purity.png", dpi=150, format='png', facecolor='white', edgecolor='none')
     pbar.update(1)
 
-    fig2.savefig("h2o_concentration.png", dpi=300)
+    fig2.savefig("h2o_concentration.png", dpi=150, format='png', facecolor='white', edgecolor='none')
     pbar.update(1)
 
-    fig3.savefig("temperature.png", dpi=300)
+    fig3.savefig("temperature.png", dpi=150, format='png', facecolor='white', edgecolor='none')
     pbar.update(1)
 
-    fig4.savefig("level.png", dpi=300)
+    fig4.savefig("level.png", dpi=150, format='png', facecolor='white', edgecolor='none')
     pbar.update(1)
 
 print("📋 Preparing report data...")
@@ -330,16 +332,26 @@ with open("report.tex", "w") as f:
 print("🔨 Compiling LaTeX to PDF...")
 try:
     import subprocess
-    result = subprocess.run(["pdflatex", "-interaction=nonstopmode", "report.tex"],
-                          capture_output=True, text=True)
+
+    # First run: create auxiliary files and resolve references
+    print("  📄 First compilation pass...")
+    result1 = subprocess.run(["pdflatex", "-interaction=nonstopmode", "report.tex"],
+                           capture_output=True, text=True)
+
+    # Second run: resolve all cross-references
+    print("  📄 Second compilation pass (resolving references)...")
+    result2 = subprocess.run(["pdflatex", "-interaction=nonstopmode", "report.tex"],
+                           capture_output=True, text=True)
 
     # Check if PDF was actually generated
     if os.path.exists("report.pdf") and os.path.getsize("report.pdf") > 0:
         print("✅ PDF report generated: report.pdf")
     else:
         print("❌ LaTeX compilation failed - no PDF generated!")
-        print("LaTeX Error Output:")
-        print(result.stderr)
+        print("First compilation output:")
+        print(result1.stderr)
+        print("\nSecond compilation output:")
+        print(result2.stderr)
         sys.exit(1)
 
 except FileNotFoundError:
@@ -355,6 +367,6 @@ print("   - report.pdf (main report)")
 print("   - purity.png, h2o_concentration.png, temperature.png, level.png (plots)")
 print("   - report.tex (LaTeX source)")
 
-for fname in ["purity.png", "h2o_concentration.png", "temperature.png", "level.png"]:
-    if os.path.exists(fname):
-        os.remove(fname)
+# for fname in ["purity.png", "h2o_concentration.png", "temperature.png", "level.png"]:
+#     if os.path.exists(fname):
+#         os.remove(fname)

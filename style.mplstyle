@@ -1,6 +1,6 @@
 # === Figure Settings ===
 figure.figsize: 6.5, 4.5  # Standard for publications (fits IEEE/Nature two-column format)
-savefig.bbox: tight  # Remove extra white space when saving
+# savefig.bbox: tight  # Remove extra white space when saving - commented out to fix image quality
 
 # === Font Settings ===
 font.family: serif

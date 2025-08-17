@@ -131,44 +131,57 @@ class SeeqNewConverter(BaseDataConverter):
         purity = None
         additional_timestamps = {}
 
-        # Map columns to standard format with their corresponding timestamps
-        column_mapping = {
-            'PAB_S1_LT_13_AR_REAL_F_CV': ('liquid_level', 'Date-Time.2'),
-            'PAB_S1_AE_611_AR_REAL_F_CV': ('h2o_concentration', 'Date-Time.1'),
-            'Luke_PRM_LIFETIME_F_CV': ('purity', 'Date-Time'),
-            'PAB_S1_TE_324_AR_REAL_F_CV': ('temperature', 'Date-Time.3')
+        # Define the signal columns we're looking for
+        signal_columns = {
+            'PAB_S1_LT_13_AR_REAL_F_CV': 'liquid_level',
+            'PAB_S1_AE_611_AR_REAL_F_CV': 'h2o_concentration',
+            'Luke_PRM_LIFETIME_F_CV': 'purity',
+            'PAB_S1_TE_324_AR_REAL_F_CV': 'temperature'
         }
 
-        for col in data_df.columns:
-            if col in column_mapping:
-                signal_name, timestamp_col = column_mapping[col]
+        # Get all column names
+        all_columns = data_df.columns.tolist()
 
-                # Get the signal data
-                signal_data = data_df[col]
+        for signal_col, signal_name in signal_columns.items():
+            if signal_col in all_columns:
+                # Find the index of the signal column
+                signal_idx = all_columns.index(signal_col)
 
-                # Get the corresponding timestamp
-                if timestamp_col in data_df.columns:
-                    signal_timestamp = pd.to_datetime(data_df[timestamp_col], errors='coerce')
+                # The timestamp column should be immediately to the left (index - 1)
+                if signal_idx > 0:
+                    timestamp_col = all_columns[signal_idx - 1]
 
-                    # Create a series with the signal's own timestamp
-                    # Don't force alignment - let each signal keep its natural length
-                    signal_series = pd.Series(signal_data.values, index=signal_timestamp)
+                    # Verify it's a timestamp column (contains 'Date-Time')
+                    if 'Date-Time' in timestamp_col:
+                        # Get the signal data
+                        signal_data = data_df[signal_col]
 
-                    # Drop rows with invalid timestamps
-                    signal_series = signal_series.dropna()
+                        # Get the corresponding timestamp
+                        signal_timestamp = pd.to_datetime(data_df[timestamp_col], errors='coerce')
+
+                        # Create a series with the signal's own timestamp
+                        signal_series = pd.Series(signal_data.values, index=signal_timestamp)
+
+                        # Drop rows with invalid timestamps
+                        signal_series = signal_series.dropna()
+
+                        # Assign to appropriate field
+                        if signal_name == 'liquid_level':
+                            liquid_level = signal_series
+                        elif signal_name == 'h2o_concentration':
+                            h2o_concentration = signal_series
+                        elif signal_name == 'temperature':
+                            temperature = signal_series
+                        elif signal_name == 'purity':
+                            purity = signal_series
+
+                        print(f"Found {signal_name}: {signal_col} with timestamp {timestamp_col} ({len(signal_series)} points)")
+                    else:
+                        print(f"Warning: Expected timestamp column before {signal_col}, but found {timestamp_col}")
                 else:
-                    # Fallback to primary timestamp
-                    signal_series = pd.Series(signal_data.values, index=data_df[primary_timestamp])
-
-                # Assign to appropriate field
-                if signal_name == 'liquid_level':
-                    liquid_level = signal_series
-                elif signal_name == 'h2o_concentration':
-                    h2o_concentration = signal_series
-                elif signal_name == 'temperature':
-                    temperature = signal_series
-                elif signal_name == 'purity':
-                    purity = signal_series
+                    print(f"Warning: Signal column {signal_col} is the first column, no timestamp column found")
+            else:
+                print(f"Warning: Signal column {signal_col} not found in data")
 
         # For the primary timestamp, use only the non-null values
         # This will be used as a reference timestamp for the overall dataset
@@ -243,45 +256,57 @@ class SeeqOldConverter(BaseDataConverter):
         purity = None
         additional_timestamps = {}
 
-        # Map columns to standard format with their corresponding timestamps
-        # Note: H2O column is different from SeeqNewConverter
-        column_mapping = {
-            'PAB_S1_LT_13_AR_REAL_F_CV': ('liquid_level', 'Date-Time.2'),
-            'PAB_S1.AE_600_AR_REAL.F_CV': ('h2o_concentration', 'Date-Time.1'),  # Different H2O column
-            'Luke_PRM_LIFETIME_F_CV': ('purity', 'Date-Time'),
-            'PAB_S1_TE_324_AR_REAL_F_CV': ('temperature', 'Date-Time.3')
+        # Define the signal columns we're looking for (different H2O column from SeeqNewConverter)
+        signal_columns = {
+            'PAB_S1_LT_13_AR_REAL_F_CV': 'liquid_level',
+            'PAB_S1.AE_600_AR_REAL.F_CV': 'h2o_concentration',  # Different H2O column
+            'Luke_PRM_LIFETIME_F_CV': 'purity',
+            'PAB_S1_TE_324_AR_REAL_F_CV': 'temperature'
         }
 
-        for col in data_df.columns:
-            if col in column_mapping:
-                signal_name, timestamp_col = column_mapping[col]
+        # Get all column names
+        all_columns = data_df.columns.tolist()
 
-                # Get the signal data
-                signal_data = data_df[col]
+        for signal_col, signal_name in signal_columns.items():
+            if signal_col in all_columns:
+                # Find the index of the signal column
+                signal_idx = all_columns.index(signal_col)
 
-                # Get the corresponding timestamp
-                if timestamp_col in data_df.columns:
-                    signal_timestamp = pd.to_datetime(data_df[timestamp_col], errors='coerce')
+                # The timestamp column should be immediately to the left (index - 1)
+                if signal_idx > 0:
+                    timestamp_col = all_columns[signal_idx - 1]
 
-                    # Create a series with the signal's own timestamp
-                    # Don't force alignment - let each signal keep its natural length
-                    signal_series = pd.Series(signal_data.values, index=signal_timestamp)
+                    # Verify it's a timestamp column (contains 'Date-Time')
+                    if 'Date-Time' in timestamp_col:
+                        # Get the signal data
+                        signal_data = data_df[signal_col]
 
-                    # Drop rows with invalid timestamps
-                    signal_series = signal_series.dropna()
+                        # Get the corresponding timestamp
+                        signal_timestamp = pd.to_datetime(data_df[timestamp_col], errors='coerce')
+
+                        # Create a series with the signal's own timestamp
+                        signal_series = pd.Series(signal_data.values, index=signal_timestamp)
+
+                        # Drop rows with invalid timestamps
+                        signal_series = signal_series.dropna()
+
+                        # Assign to appropriate field
+                        if signal_name == 'liquid_level':
+                            liquid_level = signal_series
+                        elif signal_name == 'h2o_concentration':
+                            h2o_concentration = signal_series
+                        elif signal_name == 'temperature':
+                            temperature = signal_series
+                        elif signal_name == 'purity':
+                            purity = signal_series
+
+                        print(f"Found {signal_name}: {signal_col} with timestamp {timestamp_col} ({len(signal_series)} points)")
+                    else:
+                        print(f"Warning: Expected timestamp column before {signal_col}, but found {timestamp_col}")
                 else:
-                    # Fallback to primary timestamp
-                    signal_series = pd.Series(signal_data.values, index=data_df[primary_timestamp])
-
-                # Assign to appropriate field
-                if signal_name == 'liquid_level':
-                    liquid_level = signal_series
-                elif signal_name == 'h2o_concentration':
-                    h2o_concentration = signal_series
-                elif signal_name == 'temperature':
-                    temperature = signal_series
-                elif signal_name == 'purity':
-                    purity = signal_series
+                    print(f"Warning: Signal column {signal_col} is the first column, no timestamp column found")
+            else:
+                print(f"Warning: Signal column {signal_col} not found in data")
 
         # For the primary timestamp, use only the non-null values
         # This will be used as a reference timestamp for the overall dataset
