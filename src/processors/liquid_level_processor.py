@@ -221,4 +221,8 @@ class LiquidLevelProcessor(BaseDataProcessor):
         ax.legend()
         ax.grid()
 
+        # Auto-scale to fit all data
+        ax.relim()
+        ax.autoscale()
+
         return ax

@@ -44,12 +44,23 @@ except json.JSONDecodeError:
 
 data_path = data["Data"]["Path"]
 data_name = data["Data"]["Name"]
+converter_name = data["Data"]["Converter"]
 
-dataset_paths = {
-    'baseline': os.path.join(data_path, f"{data_name}_baseline.xlsx"),
-    'ullage': os.path.join(data_path, f"{data_name}_ullage.xlsx"),
-    'liquid': os.path.join(data_path, f"{data_name}_liquid.xlsx")
-}
+# Handle different converter types
+if converter_name == "CsvFolderConverter":
+    # For CSV folder converter, pass the directory path directly
+    dataset_paths = {
+        'baseline': data_path,
+        'ullage': data_path,
+        'liquid': data_path
+    }
+else:
+    # For other converters, use the traditional file naming convention
+    dataset_paths = {
+        'baseline': os.path.join(data_path, f"{data_name}_baseline.xlsx"),
+        'ullage': os.path.join(data_path, f"{data_name}_ullage.xlsx"),
+        'liquid': os.path.join(data_path, f"{data_name}_liquid.xlsx")
+    }
 
 print(f"Data path: {data_path}")
 print(f"Dataset name: {data_name}")

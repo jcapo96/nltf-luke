@@ -64,17 +64,17 @@ class TemperatureAnalysis(BaseAnalysis):
                 if dataset.temperature is not None and dataset.liquid_level is not None:
                     # Get the actual run start/end times from liquid level analysis
                     level_times = dataset.liquid_level.find_times()
-                    start_time = level_times['start_time']
-                    end_time = level_times['end_time']
+                    dataset_start_time = level_times['start_time']
+                    dataset_end_time = level_times['end_time']
 
-                    if start_time is None or end_time is None:
+                    if dataset_start_time is None or dataset_end_time is None:
                         # Fallback to dataset's own time range
                         temp_timestamp = dataset.standard_data.temperature.index
-                        start_time = temp_timestamp.min()
-                        end_time = temp_timestamp.max()
+                        dataset_start_time = temp_timestamp.min()
+                        dataset_end_time = temp_timestamp.max()
 
                     temp_data = dataset.temperature.calculate_temperature(
-                        start_time, end_time,
+                        dataset_start_time, dataset_end_time,
                         integration_time_ini=integration_time_ini,
                         integration_time_end=integration_time_end,
                         offset_ini=offset_ini,
@@ -82,7 +82,7 @@ class TemperatureAnalysis(BaseAnalysis):
                     )
 
                     dataset.temperature.plot_temperature(
-                        start_time, end_time,
+                        dataset_start_time, dataset_end_time,
                         ax=ax, color=self.colors[dataset_type],
                         dataset_name=dataset_type.capitalize()
                     )
@@ -93,8 +93,8 @@ class TemperatureAnalysis(BaseAnalysis):
                     # Store results for reporting
                     self._results[dataset_type] = {
                         'temp_data': temp_data,
-                        'start_time': start_time,
-                        'end_time': end_time
+                        'start_time': dataset_start_time,
+                        'end_time': dataset_end_time
                     }
 
             except Exception as e:
@@ -107,5 +107,13 @@ class TemperatureAnalysis(BaseAnalysis):
                 ax.legend(ncol=len(plotted_datasets))
             else:
                 ax.legend(ncol=1)
+
+        # Auto-scale to fit all plotted data
+        ax.relim()
+        ax.autoscale()
+
+        # Warn if no datasets were plotted
+        if not plotted_datasets:
+            print("Warning: No temperature data could be plotted. Check if datasets have temperature and liquid level data.")
 
         return self

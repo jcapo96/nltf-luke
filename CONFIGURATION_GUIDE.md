@@ -88,13 +88,30 @@ The framework uses JSON configuration files to specify all parameters needed for
 #### **Available Converters:**
 - `"SeeqNewConverter"`: Modern Seeq data format (default)
 - `"SeeqOldConverter"`: Legacy Seeq data format
+- `"CsvFolderConverter"`: CSV data organized in subdirectories
 - Custom converters can be added to the framework
 
 #### **Expected Data Files:**
-The framework expects these files in the specified data directory:
+
+**For SeeqNewConverter and SeeqOldConverter:**
 - `{dataset_prefix}_baseline.xlsx` - Baseline (no sample) data
 - `{dataset_prefix}_ullage.xlsx` - Ullage (gas phase) data
 - `{dataset_prefix}_liquid.xlsx` - Liquid (submerged) data
+
+**For CsvFolderConverter:**
+The framework expects a directory structure with subdirectories:
+```
+data_path/
+├── baseline/
+│   ├── ae_*.csv (H2O concentration)
+│   ├── lt_*.csv (liquid level)
+│   ├── prm_*.csv (purity/lifetime)
+│   └── te_*.csv (temperature)
+├── ullage/
+│   └── (same files as baseline)
+└── liquid/
+    └── (same files as baseline)
+```
 
 ### 4. **Date of Receipt** (Required)
 ```json

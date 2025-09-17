@@ -6,6 +6,7 @@ from typing import List
 from .base_converter import BaseDataConverter
 from .seeq_new_converter import SeeqNewConverter
 from .seeq_old_converter import SeeqOldConverter
+from .csv_folder_converter import CsvFolderConverter
 from core.standard_format import StandardDataFormat
 
 
@@ -31,6 +32,7 @@ class DataFormatManager:
         """Register the default converters that come with the framework."""
         self.register_converter(SeeqNewConverter())
         self.register_converter(SeeqOldConverter())
+        self.register_converter(CsvFolderConverter())
 
     def register_converter(self, converter: BaseDataConverter):
         """

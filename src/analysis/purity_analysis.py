@@ -55,6 +55,7 @@ class PurityAnalysis(BaseAnalysis):
             fig, ax = plt.subplots(figsize=(10, 6))
 
         prepared_data = self.dataset_manager.prepare_datasets(manual=manual)
+        plotted_datasets = []
 
         for dataset_type, data in prepared_data.items():
             try:
@@ -87,6 +88,9 @@ class PurityAnalysis(BaseAnalysis):
                         fit_legend=fit_legend, dataset_name=dataset_type.capitalize()
                     )
 
+                    # Track which datasets were plotted
+                    plotted_datasets.append(dataset_type)
+
                     # Store results for reporting
                     self._results[dataset_type] = {
                         'purity_data': purity_data,
@@ -97,5 +101,13 @@ class PurityAnalysis(BaseAnalysis):
             except Exception as e:
                 # Error analyzing dataset - continue with others
                 pass
+
+        # Auto-scale to fit all plotted data
+        ax.relim()
+        ax.autoscale()
+
+        # Warn if no datasets were plotted
+        if not plotted_datasets:
+            print("Warning: No purity data could be plotted. Check if datasets have purity and liquid level data.")
 
         return self
