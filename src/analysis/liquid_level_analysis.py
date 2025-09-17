@@ -49,6 +49,7 @@ class LiquidLevelAnalysis(BaseAnalysis):
             fig, ax = plt.subplots(figsize=(10, 6))
 
         prepared_data = self.dataset_manager.prepare_datasets(manual=manual)
+        plotted_datasets = []
 
         for dataset_type, data in prepared_data.items():
             try:
@@ -73,6 +74,9 @@ class LiquidLevelAnalysis(BaseAnalysis):
                         dataset_name=dataset_type.capitalize()
                     )
 
+                    # Track which datasets were plotted
+                    plotted_datasets.append(dataset_type)
+
                     # Store results for reporting
                     self._results[dataset_type] = {
                         'start_time': start_time,
@@ -86,4 +90,13 @@ class LiquidLevelAnalysis(BaseAnalysis):
         # Only add legend if there are labeled artists
         if ax.get_legend_handles_labels()[0]:
             ax.legend(ncol=1)
+
+        # Auto-scale to fit all plotted data
+        ax.relim()
+        ax.autoscale()
+
+        # Warn if no datasets were plotted
+        if not plotted_datasets:
+            print("Warning: No liquid level data could be plotted. Check if datasets have liquid level data.")
+
         return self

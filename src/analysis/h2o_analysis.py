@@ -54,6 +54,7 @@ class H2OConcentrationAnalysis(BaseAnalysis):
             fig, ax = plt.subplots(figsize=(10, 6))
 
         prepared_data = self.dataset_manager.prepare_datasets(manual=manual)
+        plotted_datasets = []
 
         for dataset_type, data in prepared_data.items():
             try:
@@ -86,6 +87,9 @@ class H2OConcentrationAnalysis(BaseAnalysis):
                         dataset_name=dataset_type.capitalize()
                     )
 
+                    # Track which datasets were plotted
+                    plotted_datasets.append(dataset_type)
+
                     # Store results for reporting
                     self._results[dataset_type] = {
                         'h2o_data': h2o_data,
@@ -101,5 +105,13 @@ class H2OConcentrationAnalysis(BaseAnalysis):
         # Only add legend if there are labeled artists
         if ax.get_legend_handles_labels()[0]:
             ax.legend(ncol=3)
+
+        # Auto-scale to fit all plotted data
+        ax.relim()
+        ax.autoscale()
+
+        # Warn if no datasets were plotted
+        if not plotted_datasets:
+            print("Warning: No H2O concentration data could be plotted. Check if datasets have H2O concentration and liquid level data.")
 
         return self

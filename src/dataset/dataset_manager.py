@@ -55,20 +55,89 @@ class DatasetManager:
             print("Using default converter: SeeqNewConverter")
             self.preferred_converter = "SeeqNewConverter"
 
-        for dataset_type, file_path in self.dataset_paths.items():
-            try:
-                # Check if the format manager can handle this file
-                if self.format_manager.can_convert(file_path):
-                    # Create and load the dataset
-                    dataset = Dataset(path=file_path, name=dataset_type.capitalize())
-                    dataset.load(self.format_manager)
-                    self.datasets[dataset_type] = dataset
-                else:
-                    print(f"Warning: No converter found for {file_path}")
-            except Exception as e:
-                print(f"Warning: Could not load dataset {dataset_type}: {e}")
-                # Could not load dataset - continue with others
-                pass
+        # Special handling for CsvFolderConverter
+        if self.preferred_converter == "CsvFolderConverter":
+            self._load_csv_folder_datasets()
+        else:
+            # Standard loading for other converters
+            for dataset_type, file_path in self.dataset_paths.items():
+                try:
+                    # Check if the format manager can handle this file
+                    if self.format_manager.can_convert(file_path):
+                        # Create and load the dataset
+                        dataset = Dataset(path=file_path, name=dataset_type.capitalize())
+                        dataset.load(self.format_manager)
+                        self.datasets[dataset_type] = dataset
+                    else:
+                        print(f"Warning: No converter found for {file_path}")
+                except Exception as e:
+                    print(f"Warning: Could not load dataset {dataset_type}: {e}")
+                    # Could not load dataset - continue with others
+                    pass
+
+            # Validate that at least one dataset was loaded
+            if not self.datasets:
+                raise ValueError("No datasets could be loaded. Please check your data paths and file formats.")
+
+            available_datasets = list(self.datasets.keys())
+            print(f"Successfully loaded {len(self.datasets)} dataset(s): {', '.join(available_datasets)}")
+
+            # Warn about missing datasets
+            required_datasets = ['baseline', 'ullage', 'liquid']
+            missing_datasets = [d for d in required_datasets if d not in self.datasets]
+            if missing_datasets:
+                print(f"Warning: Missing datasets: {', '.join(missing_datasets)}")
+                print("Analysis will proceed with available datasets only.")
+
+    def _load_csv_folder_datasets(self):
+        """Special loading logic for CsvFolderConverter."""
+        try:
+            # Get the directory path (all dataset paths should be the same for CSV folder)
+            data_path = list(self.dataset_paths.values())[0]
+
+            # Get the CSV folder converter
+            csv_converter = None
+            for converter in self.format_manager.converters:
+                if converter.__class__.__name__ == "CsvFolderConverter":
+                    csv_converter = converter
+                    break
+
+            if not csv_converter:
+                print("Error: CsvFolderConverter not found")
+                return
+
+            # Load each dataset separately
+            for dataset_type in ['baseline', 'ullage', 'liquid']:
+                try:
+                    standard_data = csv_converter.convert_dataset(data_path, dataset_type)
+                    if standard_data:
+                        dataset = Dataset(path=data_path, name=dataset_type.capitalize())
+                        # Set the data directly and initialize processors
+                        dataset.standard_data = standard_data
+                        dataset._initialize_processors()
+                        self.datasets[dataset_type] = dataset
+                        print(f"Loaded {dataset_type} dataset from CSV folder")
+                    else:
+                        print(f"Warning: No {dataset_type} data found in CSV folder")
+                except Exception as e:
+                    print(f"Warning: Failed to load {dataset_type} dataset: {e}")
+
+        except Exception as e:
+            print(f"Error loading CSV folder datasets: {e}")
+
+        # Validate that at least one dataset was loaded
+        if not self.datasets:
+            raise ValueError("No datasets could be loaded. Please check your data paths and file formats.")
+
+        available_datasets = list(self.datasets.keys())
+        print(f"Successfully loaded {len(self.datasets)} dataset(s): {', '.join(available_datasets)}")
+
+        # Warn about missing datasets
+        required_datasets = ['baseline', 'ullage', 'liquid']
+        missing_datasets = [d for d in required_datasets if d not in self.datasets]
+        if missing_datasets:
+            print(f"Warning: Missing datasets: {', '.join(missing_datasets)}")
+            print("Analysis will proceed with available datasets only.")
 
     def get_dataset(self, dataset_type: str) -> Optional[Dataset]:
         """
@@ -105,9 +174,7 @@ class DatasetManager:
 
         for dataset_type, dataset in self.datasets.items():
             try:
-                # Load the dataset using the format manager
-                dataset.load(self.format_manager)
-
+                # Dataset is already loaded with specific data - don't reload
                 if dataset.liquid_level is None:
                     # Dataset missing liquid level data - skip
                     continue

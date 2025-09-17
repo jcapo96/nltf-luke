@@ -43,12 +43,23 @@ def main():
 
     data_path = data["Data"]["Path"]
     data_name = data["Data"]["Name"]
+    converter_name = data["Data"]["Converter"]
 
-    dataset_paths = {
-        'baseline': os.path.join(data_path, f"{data_name}_baseline.xlsx"),
-        'ullage': os.path.join(data_path, f"{data_name}_ullage.xlsx"),
-        'liquid': os.path.join(data_path, f"{data_name}_liquid.xlsx")
-    }
+    # Handle different converter types
+    if converter_name == "CsvFolderConverter":
+        # For CSV folder converter, pass the directory path directly
+        dataset_paths = {
+            'baseline': data_path,
+            'ullage': data_path,
+            'liquid': data_path
+        }
+    else:
+        # For other converters, use the traditional file naming convention
+        dataset_paths = {
+            'baseline': os.path.join(data_path, f"{data_name}_baseline.xlsx"),
+            'ullage': os.path.join(data_path, f"{data_name}_ullage.xlsx"),
+            'liquid': os.path.join(data_path, f"{data_name}_liquid.xlsx")
+        }
 
     output_dir = "preliminary_plots"
     os.makedirs(output_dir, exist_ok=True)
@@ -72,8 +83,11 @@ def main():
     print("Loading datasets...")
     with tqdm(total=3, desc="Loading Datasets", unit="dataset") as pbar:
         for dataset_type in ['baseline', 'ullage', 'liquid']:
-            dataset_manager.load_dataset(dataset_type)
-            print(f"  {dataset_type}: {dataset_type}")
+            dataset = dataset_manager.get_dataset(dataset_type)
+            if dataset:
+                print(f"  {dataset_type}: Loaded successfully")
+            else:
+                print(f"  {dataset_type}: Failed to load")
             pbar.update(1)
 
     print("Generating raw data plots...")

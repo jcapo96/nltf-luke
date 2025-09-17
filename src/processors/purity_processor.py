@@ -147,11 +147,15 @@ class PurityProcessor(BaseDataProcessor):
         if 'full_data' in purity_data and 'full_timestamp' in purity_data:
             data = purity_data['full_data']
             timestamp = purity_data['full_timestamp']
-        else:
+        elif 'data' in purity_data:
             # Fallback to old structure if available
-            if 'data' in purity_data:
-                data = purity_data['data']
-                timestamp = data.index
+            data = purity_data['data']
+            timestamp = data.index
+        else:
+            # If no purity_data provided, use the processor's internal data
+            if self.standard_data.purity is not None and not self.standard_data.purity.empty:
+                data = self.standard_data.purity.values
+                timestamp = self.standard_data.purity.index
             else:
                 print("Warning: No purity data available for plotting")
                 return ax
@@ -176,5 +180,9 @@ class PurityProcessor(BaseDataProcessor):
         ax.set_ylabel(r'$e^-$ lifetime [s]')
         ax.legend()
         ax.grid()
+
+        # Auto-scale to fit all data
+        ax.relim()
+        ax.autoscale()
 
         return ax
