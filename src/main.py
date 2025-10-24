@@ -54,6 +54,13 @@ if converter_name == "CsvFolderConverter":
         'ullage': data_path,
         'liquid': data_path
     }
+elif converter_name == "iHistorianConverter":
+    # For iHistorian converter, use CSV files
+    dataset_paths = {
+        'baseline': os.path.join(data_path, f"{data_name}_baseline.csv"),
+        'ullage': os.path.join(data_path, f"{data_name}_ullage.csv"),
+        'liquid': os.path.join(data_path, f"{data_name}_liquid.csv")
+    }
 else:
     # For other converters, use the traditional file naming convention
     dataset_paths = {
