@@ -5,55 +5,81 @@ A comprehensive data analysis framework for processing and analyzing liquid nitr
 ## Overview
 
 This framework provides a modular, extensible system for:
-- Loading and converting data from various formats (Excel, CSV, JSON, etc.)
+- Loading and converting data from various formats (Excel, CSV, iHistorian, etc.)
 - Processing different types of signals (liquid level, H₂O concentration, temperature, purity)
 - Analyzing data with configurable integration windows
 - Generating comprehensive LaTeX reports
 - Creating preliminary data analysis reports
 
-## Quick Start
+## Environment Setup
 
-### Prerequisites
+### 1. Create Virtual Environment
 
 ```bash
+# Create virtual environment
+python3 -m venv luke
+
+# Activate virtual environment
+# On macOS/Linux:
+source luke/bin/activate
+# On Windows:
+# luke\Scripts\activate
+```
+
+### 2. Install Dependencies
+
+```bash
+# Install required packages
 pip install -r requirements.txt
 ```
 
-### Basic Usage
+### 3. Verify Installation
 
-1. **Generate Main Report**:
-   ```bash
-   python3 src/main.py your_config.json
-   ```
+```bash
+# Test the framework
+python3 -c "from src.converters import DataFormatManager; print('✅ Framework loaded successfully!')"
+```
 
-2. **Generate Preliminary Report**:
-   ```bash
-   python3 src/preliminary_report.py your_config.json
-   ```
+## Configuration Files
 
-## Configuration
+The framework uses JSON configuration files to specify data sources, analysis parameters, and metadata. Configuration files contain several key sections:
 
-The framework uses JSON configuration files that specify:
-- Data file paths and converter selection
-- Integration parameters and analysis preferences
-- Sample information and metadata
-- Report generation settings
-
-### Configuration Guide
-
-For detailed information about JSON configuration files, see [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md).
-
-### Quick Configuration Example
+### Configuration File Structure
 
 ```json
 {
+  "Author": {
+    "Name": "Your Name",
+    "Email": "your.email@example.com"
+  },
+  "Tester": {
+    "Name": "Tester Name", 
+    "Email": "tester@example.com"
+  },
   "Data": {
     "Path": "/path/to/data/directory",
     "Name": "dataset_prefix",
-    "Converter": "SeeqNewConverter"
+    "Converter": "iHistorianConverter"
+  },
+  "Date of Receipt": "MM/DD/YYYY",
+  "Sample": {
+    "Sample Name": "Descriptive sample name",
+    "Composition": "Sample material description",
+    "Picture Location": "Path to sample images",
+    "Dimensions": "Sample dimensions",
+    "Source": "Sample source",
+    "Preparation": "Preparation procedure"
+  },
+  "Results": {
+    "Summary": "Analysis summary text"
+  },
+  "Images": {
+    "Before": "/path/to/before_image.jpg",
+    "After": "/path/to/after_image.jpg"
   },
   "Parameters": {
     "H2O": {
+      "manual": false,
       "integration_time_ini": 60,
       "integration_time_end": 480,
       "offset_ini": 60,
@@ -62,6 +88,133 @@ For detailed information about JSON configuration files, see [CONFIGURATION_GUID
   }
 }
 ```
+
+### Configuration Fields Explained
+
+#### Author Section
+- **Name**: Primary author of the analysis
+- **Email**: Contact email for the author
+
+#### Tester Section  
+- **Name**: Person who performed the testing
+- **Email**: Contact email for the tester
+
+#### Data Section
+- **Path**: Directory containing the data files
+- **Name**: Prefix for dataset files (e.g., "october2025" for files like `october2025_baseline.csv`)
+- **Converter**: Data converter to use:
+  - `"iHistorianConverter"` - For semicolon-separated CSV files with combined signals
+  - `"CsvFolderConverter"` - For CSV files organized in subdirectories
+  - `"SeeqNewConverter"` - For modern Seeq Excel format
+  - `"SeeqOldConverter"` - For legacy Seeq Excel format
+
+#### Sample Section
+- **Sample Name**: Descriptive name for the test sample
+- **Composition**: Material composition description
+- **Picture Location**: Path to sample images
+- **Dimensions**: Physical dimensions of the sample
+- **Source**: Where the sample was obtained
+- **Preparation**: Sample preparation procedure
+
+#### Results Section
+- **Summary**: Text summary of the analysis results
+
+#### Images Section
+- **Before**: Path to "before test" sample image
+- **After**: Path to "after test" sample image
+
+#### Parameters Section
+- **H2O.manual**: Whether to use manual time selection (true/false)
+- **H2O.integration_time_ini**: Initial integration window duration (minutes)
+- **H2O.integration_time_end**: Final integration window duration (minutes)  
+- **H2O.offset_ini**: Initial offset from start time (minutes)
+- **H2O.offset_end**: Final offset from end time (minutes)
+
+## Usage
+
+### 1. Generate Main Analysis Report
+
+The main analysis generates a comprehensive LaTeX PDF report with statistical analysis and plots.
+
+```bash
+# Activate virtual environment
+source luke/bin/activate
+
+# Run main analysis
+python3 src/main.py your_config.json
+```
+
+**Output files:**
+- `report.pdf` - Main LaTeX report
+- `purity.png` - Purity analysis plot
+- `h2o_concentration.png` - H₂O concentration plot  
+- `temperature.png` - Temperature analysis plot
+- `level.png` - Liquid level plot
+- `report.tex` - LaTeX source file
+
+### 2. Generate Preliminary Analysis
+
+The preliminary analysis creates raw data plots and summary statistics for initial data inspection.
+
+```bash
+# Activate virtual environment
+source luke/bin/activate
+
+# Run preliminary analysis
+python3 src/preliminary_report.py your_config.json
+```
+
+**Output files:**
+- `preliminary_plots/` directory containing:
+  - Individual signal plots for each dataset (baseline, ullage, liquid)
+  - Combined plots showing all signals together
+  - `preliminary_summary.txt` - Detailed data summary
+
+### Example Workflow
+
+```bash
+# 1. Set up environment
+python3 -m venv luke
+source luke/bin/activate
+pip install -r requirements.txt
+
+# 2. Prepare your data and configuration file
+# Edit your_config.json with appropriate paths and parameters
+
+# 3. Run preliminary analysis first
+python3 src/preliminary_report.py your_config.json
+
+# 4. Review preliminary plots and adjust parameters if needed
+
+# 5. Run main analysis
+python3 src/main.py your_config.json
+
+# 6. Check generated report.pdf
+```
+
+## Supported Data Formats
+
+The framework supports multiple data input formats through its converter system:
+
+### iHistorian Format
+- **File Type**: Semicolon-separated CSV files
+- **Structure**: All signals combined in single file with sparse data
+- **Files**: `*_baseline.csv`, `*_liquid.csv`, `*_ullage.csv`
+- **Converter**: `iHistorianConverter`
+- **Use Case**: Modern data acquisition systems with combined signal output
+
+### CSV Folder Format  
+- **File Type**: CSV files organized in subdirectories
+- **Structure**: Separate files per signal type in baseline/ullage/liquid folders
+- **Files**: `ae_*.csv` (H₂O), `lt_*.csv` (level), `prm_*.csv` (purity), `te_*.csv` (temperature)
+- **Converter**: `CsvFolderConverter`
+- **Use Case**: Legacy data organization with separate signal files
+
+### Seeq Formats
+- **File Type**: Excel files (.xlsx/.xls)
+- **Structure**: Modern and legacy Seeq data export formats
+- **Converters**: `SeeqNewConverter`, `SeeqOldConverter`
+- **Use Case**: Seeq data analysis platform exports
 
 ## Key Features
 
@@ -94,6 +247,8 @@ The framework follows a **modular, extensible architecture** that separates conc
    - `base_converter.py`: Abstract base class for data converters
    - `seeq_new_converter.py`: Converter for modern Seeq data format
    - `seeq_old_converter.py`: Converter for legacy Seeq data format
+   - `csv_folder_converter.py`: Converter for CSV files in subdirectories
+   - `ihistorian_converter.py`: Converter for iHistorian semicolon-separated CSV format
    - `data_format_manager.py`: Manages converter selection and registration
 
 3. **Signal Processors** (`src/processors/`)
@@ -133,6 +288,8 @@ NLTF-LUKE/
 │   │   ├── base_converter.py   # Abstract converter base class
 │   │   ├── seeq_new_converter.py # Modern Seeq format converter
 │   │   ├── seeq_old_converter.py # Legacy Seeq format converter
+│   │   ├── csv_folder_converter.py # CSV subdirectory converter
+│   │   ├── ihistorian_converter.py # iHistorian CSV converter
 │   │   └── data_format_manager.py # Converter management
 │   ├── processors/             # Signal processing classes
 │   │   ├── liquid_level_processor.py # Liquid level processing
@@ -231,13 +388,37 @@ See [CONVERTER_IMPLEMENTATION.md](CONVERTER_IMPLEMENTATION.md) for detailed inst
 
 ### Common Issues
 
-1. **Missing Plot Files**: Ensure all required data is available and converters are working
-2. **LaTeX Compilation Errors**: Check that all plot files exist before LaTeX compilation
-3. **Data Loading Issues**: Verify file paths and converter compatibility
+1. **Module Not Found Errors**: 
+   - Ensure virtual environment is activated: `source luke/bin/activate`
+   - Install dependencies: `pip install -r requirements.txt`
+
+2. **Data Loading Issues**:
+   - Verify file paths in configuration file are correct
+   - Check that data files exist and are readable
+   - Ensure correct converter is specified for your data format
+
+3. **Missing Plot Files**: 
+   - Ensure all required data is available and converters are working
+   - Check that datasets contain the expected signal types
+
+4. **LaTeX Compilation Errors**: 
+   - Check that all plot files exist before LaTeX compilation
+   - Ensure LaTeX is installed: `brew install --cask mactex` (macOS) or `sudo apt-get install texlive-full` (Ubuntu)
+
+5. **Converter Not Found**:
+   - Verify the converter name in configuration file matches available converters
+   - Check that the data format is supported by the specified converter
 
 ### Debug Mode
 
 For troubleshooting, you can temporarily add print statements to the analysis methods in the respective processor files.
+
+### Getting Help
+
+1. Check the configuration file format against the examples in this README
+2. Verify your data files match the expected format for the chosen converter
+3. Run preliminary analysis first to check data loading before main analysis
+4. Check the generated `preliminary_summary.txt` for data statistics and issues
 
 ## Contributing
 
