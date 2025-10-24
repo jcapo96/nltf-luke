@@ -6,6 +6,7 @@ from .base_converter import BaseDataConverter
 from .seeq_new_converter import SeeqNewConverter
 from .seeq_old_converter import SeeqOldConverter
 from .csv_folder_converter import CsvFolderConverter
+from .ihistorian_converter import iHistorianConverter
 from .data_format_manager import DataFormatManager
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     'SeeqNewConverter',
     'SeeqOldConverter',
     'CsvFolderConverter',
+    'iHistorianConverter',
     'DataFormatManager'
 ]

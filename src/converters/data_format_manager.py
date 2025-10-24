@@ -7,6 +7,7 @@ from .base_converter import BaseDataConverter
 from .seeq_new_converter import SeeqNewConverter
 from .seeq_old_converter import SeeqOldConverter
 from .csv_folder_converter import CsvFolderConverter
+from .ihistorian_converter import iHistorianConverter
 from core.standard_format import StandardDataFormat
 
 
@@ -33,6 +34,7 @@ class DataFormatManager:
         self.register_converter(SeeqNewConverter())
         self.register_converter(SeeqOldConverter())
         self.register_converter(CsvFolderConverter())
+        self.register_converter(iHistorianConverter())
 
     def register_converter(self, converter: BaseDataConverter):
         """
